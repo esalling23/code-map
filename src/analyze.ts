@@ -187,6 +187,20 @@ export function analyze(rootDirs: string | string[], opts: AnalyzeOptions = {}):
   const isFnLike = (n: ts.Node | undefined): n is ts.ArrowFunction | ts.FunctionExpression =>
     !!n && (ts.isArrowFunction(n) || ts.isFunctionExpression(n));
 
+  /** `memo(...)` / `forwardRef(...)` calls around a component: part of its definition, not calls to record. */
+  const wrapperCalls = new Set<ts.Node>();
+
+  /** The function inside React's `memo(...)` / `forwardRef(...)` wrappers, nested or not: the component itself. */
+  function wrappedComponent(n: ts.Expression): ts.ArrowFunction | ts.FunctionExpression | undefined {
+    if (isFnLike(n)) return n;
+    if (!ts.isCallExpression(n)) return undefined;
+    const callee = ts.isPropertyAccessExpression(n.expression) ? n.expression.name : n.expression;
+    if (!ts.isIdentifier(callee) || (callee.text !== "memo" && callee.text !== "forwardRef")) return undefined;
+    const fn = n.arguments[0] && wrappedComponent(n.arguments[0]);
+    if (fn) wrapperCalls.add(n);
+    return fn;
+  }
+
   function indexClass(sf: ts.SourceFile, cls: ts.ClassLikeDeclaration, className: string, exported: boolean, docNode: ts.Node) {
     const classId = add(sf, className, "class", cls, { exported, docNode });
     const header = sf.text.slice(cls.getStart(sf), cls.members.pos).replace(/\s+/g, " ");
@@ -239,8 +253,9 @@ export function analyze(rootDirs: string | string[], opts: AnalyzeOptions = {}):
         for (const decl of st.declarationList.declarations) {
           if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
           const init = decl.initializer;
-          if (isFnLike(init)) {
-            add(sf, decl.name.text, "function", decl, { docNode: st, codeNode: st, body: init.body, exported, owner: init });
+          const fn = wrappedComponent(init);
+          if (fn) {
+            add(sf, decl.name.text, "function", decl, { docNode: st, codeNode: st, body: fn.body, exported, owner: fn });
           } else if (ts.isClassExpression(init)) {
             indexClass(sf, init, decl.name.text, exported, st);
             declToId.set(decl, declToId.get(init)!);
@@ -375,7 +390,7 @@ export function analyze(rootDirs: string | string[], opts: AnalyzeOptions = {}):
         }
       }
 
-      if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+      if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && !wrapperCalls.has(node)) {
         const expr = node.expression;
         const target = ts.isPropertyAccessExpression(expr) ? expr.name : ts.isElementAccessExpression(expr) ? expr.argumentExpression : expr;
         const isNew = ts.isNewExpression(node);
@@ -391,6 +406,21 @@ export function analyze(rootDirs: string | string[], opts: AnalyzeOptions = {}):
         } else if (!resolved && expr.kind !== ts.SyntaxKind.SuperKeyword && expr.kind !== ts.SyntaxKind.ImportKeyword) {
           const text = (isNew ? "new " : "") + expr.getText(sf).replace(/\s+/g, "");
           symbols[nextOwner].externalCalls.push({ text: text.length > 60 ? `${text.slice(0, 57)}...` : text, line });
+        }
+      }
+
+      // `<Panel />` renders the Panel component: a call. Lowercase tags are HTML elements.
+      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+        const tag = node.tagName;
+        const leaf = ts.isPropertyAccessExpression(tag) ? tag.name : tag;
+        if (!(ts.isIdentifier(leaf) && tag === leaf && /^[a-z]/.test(leaf.text))) {
+          const resolved = idForSymbol(resolveSymbol(leaf), false);
+          const line = lineOf(sf, node.getStart(sf));
+          if (resolved && resolved.id !== nextOwner) {
+            calls.push({ from: nextOwner, to: resolved.id, line, order: order++, ...(resolved.inferred ? { inferred: true } : {}) });
+          } else if (!resolved) {
+            symbols[nextOwner].externalCalls.push({ text: `<${tag.getText(sf)}>`, line });
+          }
         }
       }
 

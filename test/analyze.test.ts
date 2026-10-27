@@ -34,6 +34,17 @@ describe("analyze", () => {
     expect(has("src/server.ts#<module>", "src/service.ts#OrderService.constructor")).toBe(true);
   });
 
+  test("rendering a component in JSX is a call; memo and forwardRef wrap the component", () => {
+    const jsx = analyze(join(import.meta.dir, "jsx"));
+    const calls = jsx.calls.map((c) => `${c.from} -> ${c.to}`);
+    expect(calls).toContain("src/App.tsx#App -> src/Panel.tsx#Panel");
+    expect(calls).toContain("src/App.tsx#App -> src/ui.tsx#Row");
+    expect(calls).toContain("src/Panel.tsx#Panel -> src/ui.tsx#Title");
+    expect(jsx.symbols["src/Panel.tsx#Panel"].kind).toBe("function");
+    expect(jsx.symbols["src/Panel.tsx#<module>"]).toBeUndefined();
+    expect(jsx.symbols["src/App.tsx#App"].externalCalls.map((c) => c.text)).toEqual(["items.map", "<Fragment>"]);
+  });
+
   test("records data edges by relation", () => {
     const rel = (from: string, to: string) => map.data.filter((d) => d.from === from && d.to === to).map((d) => d.relation);
     expect(rel("src/service.ts#OrderService.place", "src/types.ts#OrderRequest")).toContain("param");
