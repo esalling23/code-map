@@ -1,7 +1,8 @@
 // The code-map document: what the CLI and MCP server write, and what the viewer reads.
 // The `system` part is for agents (a sitemap of the code); `render` is what the viewer needs to draw the page.
 // No Node or DOM APIs, so the viewer can also build a document from a raw `{ map, walkthrough }` dump.
-import { dataIdsOf, mmd, shortPath } from "./page";
+import { createModel, type Model } from "./model";
+import { mmd, shortPath } from "./page";
 import type { CodeMap, CodeSymbol, DataRelation, PathStep, RepoRoot, Walkthrough } from "./types";
 
 export const FORMAT = "code-map";
@@ -98,7 +99,8 @@ export const defaultTitle = (map: Pick<CodeMap, "symbols">, walk: Walkthrough) =
   return `Code map: ${entry.kind === "module" ? entry.file : entry.name}`;
 };
 
-function systemSummary(map: CodeMap, walk: Walkthrough, title: string): SystemSummary {
+function systemSummary(m: Model, title: string): SystemSummary {
+  const { map, walk } = m;
   const ctx = walk.context;
   const name = (id: string) => map.symbols[id].name;
   return {
@@ -111,14 +113,14 @@ function systemSummary(map: CodeMap, walk: Walkthrough, title: string): SystemSu
     areas: (ctx?.areas ?? []).map((a) => ({ id: a.id, name: a.name, repo: a.repo, description: a.description, doc: a.doc, docSource: a.docSource, steps: a.steps.map((i) => i + 1) })),
     steps: walk.steps.map((s) => ({
       ...stepFacts(map, walk, s),
-      kind: map.symbols[s.symbolId].kind,
+      kind: m.symbolOf(s).kind,
       description: s.description,
       calls: s.calls.map((c) => ({ id: c.to, name: name(c.to), ...(c.step !== undefined && { step: c.step + 1 }), ...(c.via.length && { via: c.via.map(name) }) })),
       data: s.dataUsed.map((d) => ({ id: d.id, name: name(d.id), relation: d.relation })),
     })),
-    data: dataIdsOf(walk).map((id) => {
+    data: m.dataIds.map((id) => {
       const sym = map.symbols[id];
-      return { id, name: sym.name, file: `${sym.file}:${sym.startLine}-${sym.endLine}`, usedBy: walk.steps.filter((s) => s.dataUsed.some((d) => d.id === id)).map((s) => s.index + 1) };
+      return { id, name: sym.name, file: `${sym.file}:${sym.startLine}-${sym.endLine}`, usedBy: m.usersOf(id).map((i) => i + 1) };
     }),
     links: (walk.links ?? []).map((l) => ({ from: l.from + 1, to: l.to + 1, label: l.label })),
     handoffs: (ctx?.handoffs ?? []).map((h) => ({ ...h, fromStep: h.fromStep + 1, step: h.step + 1 })),
@@ -127,8 +129,8 @@ function systemSummary(map: CodeMap, walk: Walkthrough, title: string): SystemSu
 }
 
 /** The symbols the page shows or names: steps, what they call (and through), and their data. */
-function referencedSymbols(map: CodeMap, walk: Walkthrough): Record<string, CodeSymbol> {
-  const ids = new Set<string>([walk.entry, ...dataIdsOf(walk)]);
+function referencedSymbols({ map, walk, dataIds }: Model): Record<string, CodeSymbol> {
+  const ids = new Set<string>([walk.entry, ...dataIds]);
   for (const s of walk.steps) {
     ids.add(s.symbolId);
     s.via.forEach((v) => ids.add(v));
@@ -142,18 +144,19 @@ function referencedSymbols(map: CodeMap, walk: Walkthrough): Record<string, Code
 
 export function buildDocument(map: CodeMap, walk: Walkthrough, opts: { title?: string; args?: string[] } = {}): CodeMapDocument {
   const title = opts.title ?? defaultTitle(map, walk);
+  const m = createModel(map, walk);
   return {
     format: FORMAT,
     version: VERSION,
     generatedAt: new Date().toISOString(),
     ...(opts.args && { generator: { args: opts.args } }),
-    system: systemSummary(map, walk, title),
+    system: systemSummary(m, title),
     render: {
       roots: map.roots,
       filesAnalyzed: map.files.length,
       walkthrough: walk,
-      symbols: referencedSymbols(map, walk),
-      diagrams: { path: pathDiagram(map, walk), compact: pathDiagram(map, walk, true), files: filesDiagram(map, walk) },
+      symbols: referencedSymbols(m),
+      diagrams: { path: pathDiagram(m), compact: pathDiagram(m, true), files: filesDiagram(m) },
       route: routeOf(map, walk),
     },
   };
@@ -169,9 +172,6 @@ export function toDocument(value: unknown): CodeMapDocument {
   if (v?.map?.symbols && v.walkthrough?.steps) return buildDocument(v.map, v.walkthrough);
   throw new Error("This isn't a code-map file. Make one with the code-map CLI (-o map.json) or its MCP server.");
 }
-
-/** Repo label of a file, or "" when only one repo was analyzed. */
-const repoOfFile = (map: CodeMap, file: string) => map.roots.find((r) => r.label && file.startsWith(`${r.label}/`))?.label ?? "";
 
 interface DiagramNode {
   id: string;
@@ -193,13 +193,13 @@ const nodeLine = (n: DiagramNode, short: boolean) => {
  * Emits `subgraph` blocks: by repo (when there are several), then by file, then one box per
  * class holding its methods. Returns the lines and the class boxes, for laying out leaves.
  */
-function groupedSubgraphs(map: CodeMap, nodesByFile: Map<string, DiagramNode[]>): { lines: string[]; boxes: DiagramNode[][]; clusters: Record<string, NodeInfo> } {
+function groupedSubgraphs(m: Model, nodesByFile: Map<string, DiagramNode[]>): { lines: string[]; boxes: DiagramNode[][]; clusters: Record<string, NodeInfo> } {
   const lines: string[] = [];
   const clusters: Record<string, NodeInfo> = {};
   const boxes: DiagramNode[][] = [];
   const byRepo = new Map<string, string[]>();
   for (const file of nodesByFile.keys()) {
-    const repo = repoOfFile(map, file);
+    const repo = m.repoOf(file);
     (byRepo.get(repo) ?? byRepo.set(repo, []).get(repo)!).push(file);
   }
   let f = 0;
@@ -248,29 +248,29 @@ function groupedSubgraphs(map: CodeMap, nodesByFile: Map<string, DiagramNode[]>)
 
 
 /** What the page shows when hovering each node: its full name and kind. */
-function pathNodeInfo(map: CodeMap, walk: Walkthrough): Record<string, NodeInfo> {
+function pathNodeInfo({ map, walk, dataIds, symbolOf }: Model): Record<string, NodeInfo> {
   const info: Record<string, NodeInfo> = {};
   for (const s of walk.steps) {
-    const sym = map.symbols[s.symbolId];
+    const sym = symbolOf(s);
     info[`s${s.index}`] = { title: `${s.index + 1}. ${sym.kind === "module" ? `${sym.file} (top level)` : sym.name}`, kind: "step" };
     if (s.parent === undefined && s.via.length) info[`x${s.index}`] = { title: map.symbols[s.via[0]].name, kind: "outside" };
   }
-  dataIdsOf(walk).forEach((id, i) => (info[`d${i}`] = { title: map.symbols[id].name, kind: "data" }));
+  dataIds.forEach((id, i) => (info[`d${i}`] = { title: map.symbols[id].name, kind: "data" }));
   return info;
 }
 
 
 /** The call path. `compact` leaves out the data types and their dotted arrows. */
-function pathDiagram(map: CodeMap, walk: Walkthrough, compact = false): Diagram {
+function pathDiagram(m: Model, compact = false): Diagram {
+  const { map, walk } = m;
   const lines = ["flowchart TD"];
-  const dataIds = compact ? [] : dataIdsOf(walk);
+  const dataIds = compact ? [] : m.dataIds;
   const dataNode = new Map(dataIds.map((id, i) => [id, `d${i}`]));
-  const stepIds = new Set(walk.steps.map((s) => s.symbolId));
   const nodesByFile = new Map<string, DiagramNode[]>();
   const push = (file: string, node: DiagramNode) => (nodesByFile.get(file) ?? nodesByFile.set(file, []).get(file)!).push(node);
 
   for (const s of walk.steps) {
-    const sym = map.symbols[s.symbolId];
+    const sym = m.symbolOf(s);
     const label = sym.kind === "module" ? "top-level code" : sym.kind === "class" ? sym.name : `${sym.name}()`;
     const dot = sym.kind === "method" ? sym.name.indexOf(".") : -1;
     push(sym.file, {
@@ -282,11 +282,11 @@ function pathDiagram(map: CodeMap, walk: Walkthrough, compact = false): Diagram 
     });
   }
   for (const id of dataIds) {
-    if (stepIds.has(id)) continue;
+    if (m.stepOf(id)) continue;
     const name = map.symbols[id].name;
     push(map.symbols[id].file, { id: dataNode.get(id)!, full: name, short: name, shape: "data" });
   }
-  const { lines: groups, boxes, clusters } = groupedSubgraphs(map, nodesByFile);
+  const { lines: groups, boxes, clusters } = groupedSubgraphs(m, nodesByFile);
   lines.push(...groups);
 
   const leadsSomewhere = new Set<string>();
@@ -305,7 +305,8 @@ function pathDiagram(map: CodeMap, walk: Walkthrough, compact = false): Diagram 
   }
   for (const s of compact ? [] : walk.steps) {
     for (const d of s.dataUsed) {
-      const target = stepIds.has(d.id) ? `s${walk.steps.find((x) => x.symbolId === d.id)!.index}` : dataNode.get(d.id);
+      const step = m.stepOf(d.id);
+      const target = step ? `s${step.index}` : dataNode.get(d.id);
       lines.push(`  s${s.index} -. ${d.relation} .-> ${target}`);
     }
   }
@@ -325,7 +326,7 @@ function pathDiagram(map: CodeMap, walk: Walkthrough, compact = false): Diagram 
   lines.push("  classDef data stroke-dasharray:4 3");
   lines.push("  class s0 entry");
   if (dataIds.length) lines.push(`  class ${[...dataNode.values()].join(",")} data`);
-  return { source: lines.join("\n"), info: { ...clusters, ...pathNodeInfo(map, walk) } };
+  return { source: lines.join("\n"), info: { ...clusters, ...pathNodeInfo(m) } };
 }
 
 export interface RouteStop {
@@ -347,8 +348,9 @@ export function routeOf(map: CodeMap, walk: Walkthrough): RouteStop[] {
   });
 }
 
-function filesDiagram(map: CodeMap, walk: Walkthrough): Diagram {
-  const onPath = new Set(walk.steps.map((s) => map.symbols[s.symbolId].file));
+function filesDiagram(m: Model): Diagram {
+  const { map } = m;
+  const onPath = m.filesOnPath;
   // Imports, plus file pairs linked only by calls (e.g. into another repo's package).
   const links = new Map<string, { from: string; to: string; inferred: boolean }>();
   for (const i of map.imports) links.set(`${i.from}|${i.to}`, { ...i, inferred: false });
@@ -363,8 +365,8 @@ function filesDiagram(map: CodeMap, walk: Walkthrough): Diagram {
   const lines = ["flowchart LR"];
   const byRepo = new Map<string, string[]>();
   for (const f of shown) {
-    const repo = repoOfFile(map, f);
-    const count = Object.values(map.symbols).filter((s) => s.file === f && s.kind !== "module").length;
+    const repo = m.repoOf(f);
+    const count = m.symbolCount(f);
     (byRepo.get(repo) ?? byRepo.set(repo, []).get(repo)!).push(`${id.get(f)}["${mmd(shortPath(f))}<br/><small>${count} symbols</small>"]`);
   }
   let r = 0;

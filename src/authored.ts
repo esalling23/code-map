@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createModel } from "./model";
 import { stepFacts } from "./pagedata";
 import type { CodeMap, Walkthrough } from "./types";
 
@@ -51,11 +52,10 @@ export function readDescriptions(path: string): AuthoredDescriptions {
 /** Applies authored descriptions. Returns the updated walkthrough and a warning for anything that didn't match. */
 export function applyDescriptions(map: CodeMap, walk: Walkthrough, d: AuthoredDescriptions): { walk: Walkthrough; title?: string; warnings: string[] } {
   const warnings: string[] = [];
+  const model = createModel(map, walk);
   const stepIndex = (ref: string | number | undefined): number | undefined => {
     if (typeof ref === "number") return ref >= 1 && ref <= walk.steps.length ? ref - 1 : undefined;
-    if (ref === undefined) return undefined;
-    const i = walk.steps.findIndex((s) => s.symbolId === ref);
-    return i === -1 ? undefined : i;
+    return ref === undefined ? undefined : model.stepIndexOf(ref);
   };
 
   const steps = walk.steps.map((s) => ({ ...s }));
