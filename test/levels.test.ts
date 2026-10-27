@@ -4,7 +4,7 @@ import { analyze } from "../src/analyze";
 import { describeHeuristic } from "../src/describe";
 import { buildDocument, pathView, type CodeMapDocument } from "../src/pagedata";
 import { tracePath } from "../src/trace";
-import { hiddenGroups, levelsFromWalk, stepLevels, visibleSteps } from "../src/viewer/levels/levels";
+import { hiddenGroups, stepLevels, visibleSteps } from "../src/viewer/levels/levels";
 
 // 0 ─┬─ 1 ─┬─ 2 ── 3
 //    │     └─ 4
@@ -12,35 +12,25 @@ import { hiddenGroups, levelsFromWalk, stepLevels, visibleSteps } from "../src/v
 //    └─ 6 ── 7
 // 8 (a separate start)
 const parents = [undefined, 0, 1, 2, 1, 0, 0, 6, undefined];
-const walkSteps = parents.map((parent, index) => ({ index, ...(parent !== undefined && { parent }) }));
 
-/** A hand-made document with only what the levels helpers read; `explicit` adds version-2 fields. */
-function handMade(explicit: boolean) {
+/** A hand-made document with only what the levels helpers read. */
+function handMade() {
   const descendants = [7, 3, 1, 0, 0, 0, 1, 0, 0];
   return {
-    system: { steps: parents.map((p, i) => ({ step: i + 1, ...(explicit && { descendants: descendants[i], ...(p !== undefined && { parent: p + 1 }) }) })) },
-    render: { walkthrough: { steps: walkSteps } },
+    system: { steps: parents.map((p, i) => ({ step: i + 1, descendants: descendants[i], ...(p !== undefined && { parent: p + 1 }) })) },
   } as unknown as CodeMapDocument;
 }
 
 describe("levels", () => {
-  test("the version-1 fallback computes the same parents and descendants as the explicit fields", () => {
-    const explicit = stepLevels(handMade(true));
-    expect(explicit.map((l) => l.descendants)).toEqual([7, 3, 1, 0, 0, 0, 1, 0, 0]);
-    expect(explicit[3].parent).toBe(2);
-    expect(explicit[8].parent).toBeUndefined();
-    expect(stepLevels(handMade(false))).toEqual(explicit);
-    expect(levelsFromWalk(walkSteps)).toEqual(explicit);
-  });
-
-  test("the explicit fields win over the walk when present", () => {
-    const doc = handMade(true);
-    (doc.system.steps[5] as { descendants?: number }).descendants = 7;
-    expect(stepLevels(doc)[5].descendants).toBe(7);
+  test("reads 0-based parents and descendants from the document's 1-based steps", () => {
+    const levels = stepLevels(handMade());
+    expect(levels.map((l) => l.descendants)).toEqual([7, 3, 1, 0, 0, 0, 1, 0, 0]);
+    expect(levels[3].parent).toBe(2);
+    expect(levels[8].parent).toBeUndefined();
   });
 
   test("a threshold hides leaves and helpers, and keeps the roots and step numbers", () => {
-    const levels = stepLevels(handMade(false));
+    const levels = stepLevels(handMade());
     expect([...visibleSteps(levels, 0)]).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
     expect([...visibleSteps(levels, 1)].sort()).toEqual([0, 1, 2, 6, 8]);
     expect([...visibleSteps(levels, 3)].sort()).toEqual([0, 1, 8]);
@@ -49,7 +39,7 @@ describe("levels", () => {
   });
 
   test("hidden steps are counted under the nearest shown step, and expanding one shows them", () => {
-    const levels = stepLevels(handMade(false));
+    const levels = stepLevels(handMade());
     const at3 = visibleSteps(levels, 3);
     expect(Object.fromEntries(hiddenGroups(levels, at3))).toEqual({ 0: [5, 6, 7], 1: [2, 3, 4] });
     const opened = visibleSteps(levels, 3, [1]);

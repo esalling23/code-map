@@ -52,31 +52,8 @@ describe("a complete, deterministic map", () => {
     expect(tracePath(map, "src/server.ts#handlePost", { stepCap: 6 }).steps).toHaveLength(6);
   });
 
-  test("a version-1 document still loads, with its step levels filled in", () => {
-    const v2 = buildDocument(map, tracePath(map, "src/server.ts#handlePost"));
-    // A version-1 file: a clock, `truncated`, and no step levels.
-    const v1 = JSON.parse(JSON.stringify(v2));
-    v1.version = 1;
-    v1.generatedAt = "2025-01-01T00:00:00.000Z";
-    v1.system.truncated = false;
-    v1.render.walkthrough.truncated = false;
-    for (const s of v1.system.steps) delete s.parent, delete s.descendants;
-    for (const s of v1.render.walkthrough.steps) delete s.descendants;
-
-    const doc = toDocument(v1);
-    expect(doc.version).toBe(2);
-    expect("generatedAt" in doc).toBe(false);
-    expect("truncated" in doc.system).toBe(false);
-    expect("truncated" in doc.render.walkthrough).toBe(false);
-    expect(doc.system.steps.map((s) => [s.parent, s.descendants])).toEqual(v2.system.steps.map((s) => [s.parent, s.descendants]));
-    expect(doc.render.walkthrough.steps.map((s) => s.descendants)).toEqual([5, 4, 0, 1, 0, 0]);
-  });
-
-  test("an old raw dump still loads: its `truncated` flag goes and its step levels are filled in", () => {
-    const walk = tracePath(map, "src/server.ts#handlePost");
-    const old = { ...walk, truncated: false, steps: walk.steps.map(({ descendants: _, ...s }) => s) };
-    const doc = toDocument({ map, walkthrough: old });
-    expect("truncated" in doc.render.walkthrough).toBe(false);
-    expect(doc.system.steps.map((s) => s.descendants)).toEqual(walk.steps.map((s) => s.descendants));
+  test("a version-1 document is refused with a message to build it again", () => {
+    const v1 = { ...JSON.parse(JSON.stringify(buildDocument(map, tracePath(map, "src/server.ts#handlePost")))), version: 1 };
+    expect(() => toDocument(v1)).toThrow("Build the map again");
   });
 });

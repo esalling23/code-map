@@ -5,7 +5,7 @@ Generates a **code-map** for a TypeScript/JavaScript codebase: a JSON document t
 - **Agents** read the document's `system` section: a plain-language sitemap of the code (summary, areas, every step with its file, lines, description, calls and data, and the links between services). CI can rebuild it to keep system docs current.
 - **People** open the same file in the **viewer**, which draws it as one page.
 
-Make maps with the CLI or the MCP server (`code-map-mcp`); both write the same file. Open them in the [hosted viewer](https://esalling23.github.io/code-map/) (file upload, with recent files kept in your browser), locally with `code-map view`, or as a standalone `.html`.
+Make maps with the CLI or the MCP server (`code-map-mcp`); both write the same file. Open them in the [hosted viewer](https://esalling23.github.io/code-map/) (file upload, with the 20 most recent files kept in your browser; in a private window, or with site storage blocked, they last only until the page reloads), locally with `code-map view`, or as a standalone `.html`.
 
 ## Install
 
@@ -56,9 +56,22 @@ Each tab's content is built the first time the tab opens, so a type shown in ten
 A repo is described by its README's opening paragraph, falling back to its `package.json` description.
 
 **Steps and summary**:
-By default the text is put together from what the analysis found, with no network calls (`describeStep` in `src/describe.ts`). It covers the first sentence of the doc comment (or the function name split into words), how the step is reached, the data it takes, returns, creates or uses, what it calls in order, and the outside code it calls. With `--llm`, the code for every step goes to Claude in one request, together with the repo and area docs above. Claude writes the summary, the "where it sits" paragraph, one sentence per area, and a 2–4 sentence description per step.
+By default the text is put together from what the analysis found, with no network calls (`describeStep` in `src/describe.ts`). It covers the first sentence of the doc comment (or the function name split into words), how the step is reached, the data it takes, returns, creates or uses, what it calls in order, and the outside code it calls. For better text, an agent or a person writes the descriptions into a template (see [Writing the descriptions](#writing-the-descriptions-yourself-or-with-an-agent)).
 
 ## Usage
+
+The CLI is the source of truth: every command is defined once in `src/commands.ts`, and the MCP server exposes the same commands as tools (see [MCP server](#mcp-server)). `code-map <command> --help` lists a command's options; `--json` prints its result as JSON.
+
+| Command | MCP tool | |
+|---|---|---|
+| `build <dir>…` | `build` | Build the map and write `.json` and/or `.html`. `code-map <dir>…` is short for this |
+| `trace <dir>…` | `trace` | Trace the path and write the fill-in template (`--template <file>`) |
+| `entries <dir>…` | `list_entries` | Likely entry points: functions nothing calls, ranked by how much code they reach |
+| `symbols <dir>… -s <spec>` | `list_symbols` | What a spec or glob matches, with caller and callee counts |
+| `check <descriptions.json>` | `check_descriptions` | The plain-English checker |
+| `read <map.json>` | `read_map` | The `system` section of a map (`--no-steps` for the summary only) |
+| `guide <name>` | `guide` | The agent guides in `docs/agents/` |
+| `view [<map.json>]` | | Serve the viewer on localhost (CLI only) |
 
 ```sh
 bun install
@@ -68,7 +81,7 @@ bun run src/cli.ts view code-map.json              # opens it in the viewer on l
 
 ```sh
 # Find likely entry points (functions nothing calls that reach the most code)
-bun run src/cli.ts ../game-manager -i src --list-entries
+bun run src/cli.ts entries ../game-manager -i src
 
 # Map one flow
 bun run src/cli.ts ../game-manager -i src -e PromoteGameHandler.execute -o promote.json
@@ -84,28 +97,24 @@ bun run src/cli.ts ../wolf-editor ../game-sdk -i src -i packages/editor-kit/src 
 
 # Only an exact set of methods (file, inline list, or both)
 bun run src/cli.ts ../wolf-editor ../game-sdk -s flow.txt -s "editor-kit/src/args.ts#*"
-
-# Have Claude write the descriptions (sends the code on the path to the Anthropic API)
-ANTHROPIC_API_KEY=... bun run src/cli.ts ./my-app -e handleRequest --llm
 ```
+
+Options for `build` (`trace`, `entries` and `symbols` share the scope options):
 
 | Option | |
 |---|---|
 | `-e, --entry` | `file#name`, `Class.method`, a bare name, or a file path. When omitted, the tool uses the uncalled function that reaches the most code. |
-| `-s, --select` | Map only these symbols (repeatable). Takes a file or an inline comma-separated list; see below. |
+| `-s, --select` | Map only these symbols (repeatable). Takes a selection file or an inline comma-separated list; see below. |
 | `-o, --out` | Where to write the map (repeatable). `.json` writes the code-map document (default `code-map.json`); `.html` writes the viewer with the map built in |
-| `--raw` | Also write the raw analysis (every symbol, call and import) and walkthrough as JSON; the viewer opens this too |
-| `--strict` | With `--descriptions`: exit 1 on any warning, e.g. a step with no written description (for CI) |
 | `-i, --include` | Analyze only this sub-path (repeatable) |
 | `--tests` | Include `*.test.*` / `*.spec.*` files |
 | `--max-hops` | With `--select`: the most unselected functions to look through between two selected ones (default 6) |
-
-| `--list <spec>` | Print what a spec or glob matches, with caller and callee counts, then exit |
-| `--template <file>` | Also write a fill-in JSON with every step and area: facts, the generated draft, and an empty `description` |
 | `--descriptions <file>` | Use a filled-in template's `title`, `summary`, `role`, `overview`, area and step descriptions, and `links` in place of generated text |
-| `--llm`, `--model` | Descriptions written by Claude (default model `claude-opus-5-5`) |
+| `--title <text>` | Page title, when the descriptions file has none |
+| `--strict` | With `--descriptions`: exit 1 on any warning, e.g. a step with no written description (for CI). CLI only |
+| `--raw <file>` | Also write the raw analysis (every symbol, call and import) and walkthrough as JSON; the viewer opens this too. CLI only |
 
-The walk follows every call reachable from the entry or selection inside the analyzed files. It never drops steps, and there is no depth or step limit to tune (`--max-depth` and `--max-steps` were removed; passing them is an error). To focus a map, narrow the scope: `-i` for fewer folders, `-s` for an exact set of functions, or `-e` for a later starting point. In the viewer, people hide small helpers with the levels filter. A walk over 2000 steps fails with an error rather than writing part of a map; narrow the scope and run it again.
+The walk follows every call reachable from the entry or selection inside the analyzed files. It never drops steps, and there is no depth or step limit to tune (`--max-depth` and `--max-steps` were removed). To focus a map, narrow the scope: `-i` for fewer folders, `-s` for an exact set of functions, or `-e` for a later starting point. In the viewer, people hide small helpers with the levels filter. A walk over 2000 steps fails with an error rather than writing part of a map; narrow the scope and run it again.
 
 ## Several repos
 
@@ -117,7 +126,7 @@ The TypeScript compiler resolves a call into another repo's package (e.g. `@wolf
 
 `--select` limits the map to the symbols you list. Only those become steps. A call that passes through functions you did not select becomes one arrow labelled `via a → b`, and the highlight stays on the line in the selected function where the chain starts. Selected functions that no other selected one leads to start their own part of the walkthrough, so every selected function appears. Selected data types (interfaces, types, enums) appear in the diagram and the Data section. `--entry` still works with a selection: if the entry is not selected, the first selected functions it reaches become the starting points.
 
-A selection file has one spec per line; lines starting with `#` or `//` are comments. It can also be a JSON array of specs.
+A selection file has one spec per line; lines starting with `#` or `//` are comments. It can also be a JSON array of specs. Any existing file that isn't a source file (`.ts`, `.tsx`, `.js`, …) is read as a selection file; a source file path selects everything in it.
 
 ```
 # Checkout flow, without pricing internals
@@ -139,7 +148,7 @@ src/api/payments.ts
 ## Writing the descriptions yourself (or with an agent)
 
 ```sh
-bun run src/cli.ts ../game-manager -i src -e PromoteGameHandler.execute --template promote.desc.json
+bun run src/cli.ts trace ../game-manager -i src -e PromoteGameHandler.execute --template promote.desc.json
 # fill in the empty "description" fields (and title, summary, role, overview) in promote.desc.json
 bun run src/cli.ts check promote.desc.json      # plain-English check: long sentences, jargon, copied docs
 bun run src/cli.ts ../game-manager -i src -e PromoteGameHandler.execute -o promote.json --descriptions promote.desc.json
@@ -154,7 +163,7 @@ The MCP server runs this whole loop for any agent (see below). Its instructions 
 ```jsonc
 {
   "format": "code-map", "version": 2,
-  "generator": { "args": ["../game-manager", "-i", "src", "-e", "…"] },   // the CLI command that rebuilds it
+  "generator": { "args": ["build", "../game-manager", "--include", "src", "--entry", "…"] },   // the CLI command that rebuilds it
   "system": {          // for agents: read this, stop before "render"
     "title", "summary", "role", "overview", "entry", "repos",
     "areas":  [{ "id", "name", "description", "doc", "docSource", "steps": [1, 2] }],
@@ -168,7 +177,7 @@ The MCP server runs this whole loop for any agent (see below). Its instructions 
 }
 ```
 
-The file has no timestamp, so two builds from the same code and arguments are byte-identical. Each step's `parent` is the step number (from 1) of the step that first called it; `descendants` counts every step beneath it, at all levels. A step reached from several callers counts under its first caller only. The viewer still opens version-1 files and raw `--raw` dumps.
+The file has no timestamp, so two builds from the same code and arguments are byte-identical. Each step's `parent` is the step number (from 1) of the step that first called it; `descendants` counts every step beneath it, at all levels. A step reached from several callers counts under its first caller only. The viewer also opens raw `--raw` dumps. Version-1 files are refused; build them again.
 
 ## Viewer
 
@@ -188,7 +197,7 @@ claude mcp add --scope user code-map -- bunx --package @eronsalling23/code-map c
 claude mcp add --scope user code-map -- bun run /path/to/code-map/src/mcp.ts
 ```
 
-Its instructions tell the agent the workflow: pick the code, trace, read every step's code, write the descriptions in plain English, check, build. Tools are stateless and take the same options as the CLI (`dirs`, `include`, `tests`, `entry`, `select`, `maxHops`) each call:
+Its instructions tell the agent the workflow: pick the code, trace, read every step's code, write the descriptions in plain English, check, build. Each tool is a CLI command (see [Usage](#usage)): its input schema is built from the command's options, and a call runs the CLI with `--json`, so a tool and its command can't drift apart. Options keep their CLI meaning under camelCase names (`dirs`, `include`, `tests`, `entry`, `select`, `maxHops`, `templatePath` for `--template`, `descriptionsPath` for `--descriptions`); CLI-only options like `--strict` aren't exposed.
 
 | Tool | |
 |---|---|
@@ -217,12 +226,14 @@ bun run src/cli.ts . -i src -s docs/maps/orders.selection.txt \
 | `src/analyze.ts` | Builds a TypeScript program with the compiler API and indexes functions, arrow-function consts, class methods/constructors/accessors, object-literal methods and data types. It resolves every call through the type checker, following imports, `this.`, `new` and re-exports, and records the data types each symbol takes, returns, creates or uses. Calls that resolve outside the analyzed sources are kept as "outside code". |
 | `src/trace.ts` | Resolves the entry and the `--select` specs, ranks candidate entries, and walks the call graph depth-first in source order. A function reached a second time links back to its first step instead of being repeated. With a selection, it walks through unselected functions to find the next selected one. |
 | `src/context.ts` | Groups the steps into areas, finds each area's docs, and lists the hand-offs between areas. |
-| `src/describe.ts` | Heuristic descriptions built from doc comments, the caller, data relations, calls in order and outside calls, so no network is needed. `--llm` replaces them with Claude's narration of the whole path. |
+| `src/describe.ts` | Heuristic descriptions built from doc comments, the caller, data relations, calls in order and outside calls, so no network is needed. They are the drafts that written descriptions replace. |
 | `src/model.ts` | One traced path as a model: the map and walkthrough with the lookups the other steps share (step of a symbol, data types and their users, repo of a file), plus `dataIdsOf` and `descendantCounts`. Pure. |
-| `src/pagedata.ts` | Builds the code-map document: the `system` sitemap for agents, plus the render data (Mermaid diagram sources, the route, the symbols shown). `toDocument` reads version-2 and version-1 documents and raw dumps; `pathView` makes the call path for a subset of steps, for the levels filter. Pure, so the viewer uses it too. |
-| `src/pipeline.ts` | The shared steps from folders to document and output files, used by the CLI and the MCP server. |
+| `src/pagedata.ts` | Builds the code-map document: the `system` sitemap for agents, plus the render data (Mermaid diagram sources, the route, the symbols shown). `toDocument` reads documents and raw dumps; `pathView` makes the call path for a subset of steps, for the levels filter. Pure, so the viewer uses it too. |
+| `src/pipeline.ts` | The steps from folders to document and output files, used by the commands. |
 | `src/viewer/` | The React viewer: the start page (upload, recent files in IndexedDB, `?src=` and `#map=` loading), the map page (`map/`), the diagrams with zoom, hover and the step navigator (`diagram/`), the levels filter (`levels/`), and `build.ts`, which bundles it into one HTML file. |
-| `src/mcp.ts`, `src/check.ts`, `src/serve.ts` | The MCP server, the plain-English checker, and `code-map view`. |
+| `src/command.ts`, `src/commands.ts`, `src/cli.ts` | The command definitions (one per command: options, types, help, MCP tool name) and the machinery that turns them into the CLI parser, the MCP input schemas and the recorded `generator.args`; `cli.ts` picks the command and prints its result. |
+| `src/mcp.ts` | The MCP server: one tool per command with a `tool` name, each running the CLI with `--json`. |
+| `src/check.ts`, `src/serve.ts` | The plain-English checker, and `code-map view`. |
 
 ## Limits
 

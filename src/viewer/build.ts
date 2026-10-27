@@ -42,6 +42,8 @@ ${DATA_SLOT}
 </html>
 `;
   })();
+  // Don't keep a failed build: in the long-running MCP server it would fail every later .html until a restart.
+  cached.catch(() => (cached = undefined));
   return cached;
 }
 

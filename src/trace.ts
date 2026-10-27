@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { descendantCounts } from "./model";
 import type { CallEdge, CodeMap, PathStep, StepCall, Walkthrough } from "./types";
 
@@ -83,17 +83,22 @@ export function resolveSelection(map: CodeMap, specs: string[]): string[] {
   return [...out];
 }
 
+/** Source files are specs (everything in them); any other file is a list of specs. */
+const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
+const isListFile = (v: string) => !SOURCE_FILE.test(v) && existsSync(v) && statSync(v).isFile();
+
 /**
- * Reads selection specs from `--select` values. Each value is a path to a file (one spec per
- * line, `#` comment lines; or a JSON array of specs) or an inline comma/newline-separated list.
+ * Reads selection specs from `--select` values. Each value is a selection file (one spec per line, `#` comment
+ * lines; or a JSON array of specs), or an inline comma/newline-separated list. A source file path is a spec itself.
  */
 export function readSelectionSpecs(values: string[]): string[] {
   return values.flatMap((v) => {
-    const text = existsSync(v) ? readFileSync(v, "utf8") : v;
+    const file = isListFile(v);
+    const text = file ? readFileSync(v, "utf8") : v;
     const trimmed = text.trim();
     if (trimmed.startsWith("[")) return (JSON.parse(trimmed) as string[]).map(String);
     return text
-      .split(existsSync(v) ? /\r?\n/ : /[,\n]/)
+      .split(file ? /\r?\n/ : /[,\n]/)
       .map((l) => l.trim())
       .filter((l) => l && !l.startsWith("#") && !l.startsWith("//"));
   });

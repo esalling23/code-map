@@ -52,7 +52,6 @@ describe("code-map document", () => {
     expect(toDocument({ map: shop, walkthrough: walk }).system.steps).toHaveLength(3);
     expect(() => toDocument({ hello: 1 })).toThrow("isn't a code-map file");
     expect(() => toDocument({ ...doc, version: 99 })).toThrow("version 99");
-    expect(toDocument({ ...JSON.parse(JSON.stringify(doc)), version: 1, generatedAt: "2025-01-01T00:00:00.000Z" })).toMatchObject({ version: 2, system: { title: "How an order is paid" } });
   });
 
   test("a standalone page embeds the document where the viewer looks for it", async () => {

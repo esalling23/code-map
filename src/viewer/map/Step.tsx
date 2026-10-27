@@ -106,7 +106,7 @@ export function StepExplain({ step, panel, onOpen }: { step: PathStep; panel?: b
                 )}{" "}
                 <span className="muted">{`line ${c.line}`}</span>
                 {" · "}
-                {c.step !== undefined ? <StepLink step={c.step}>{`step ${c.step + 1}`}</StepLink> : <span className="muted">beyond depth limit</span>}
+                {c.step !== undefined ? <StepLink step={c.step}>{`step ${c.step + 1}`}</StepLink> : <span className="muted" title="Maps made before the walk became complete could stop early">not in this map</span>}
                 {c.via.length > 0 && (
                   <>
                     {" "}

@@ -43,7 +43,7 @@ test("trace → write descriptions → check → build → read_map", async () =
   expect(built.title).toBe("How an order is paid");
   expect(built.warnings[0]).toContain("Steps without a written description");
   const doc = JSON.parse(readFileSync(out, "utf8"));
-  expect(doc.generator.args).toEqual([areas, "-e", "Orders.place", "--descriptions", templatePath, "-o", out, "-o", join(dir, "map.html")]);
+  expect(doc.generator.args).toEqual(["build", areas, "--entry", "Orders.place", "--out", out, "--out", join(dir, "map.html"), "--descriptions", templatePath]);
 
   const read = JSON.parse((await call("read_map", { path: out, steps: false })).text);
   expect(read).toMatchObject({ title: "How an order is paid", stepCount: 3 });
@@ -54,6 +54,8 @@ test("trace → write descriptions → check → build → read_map", async () =
 test("errors come back as tool results", async () => {
   const r = await call("trace", { dirs: [areas], entry: "nope" });
   expect(r.isError).toBe(true);
+  expect(r.text).not.toContain("Analyzed");
+  expect(r.text).toContain("nope");
 });
 
 test("a wrong argument name is rejected with the names the tool takes", async () => {

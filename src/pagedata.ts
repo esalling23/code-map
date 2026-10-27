@@ -1,7 +1,7 @@
 // The code-map document: what the CLI and MCP server write, and what the viewer reads.
 // The `system` part is for agents (a sitemap of the code); `render` is what the viewer needs to draw the page.
 // No Node or DOM APIs, so the viewer can also build a document from a raw `{ map, walkthrough }` dump.
-import { createModel, descendantCounts, type Model } from "./model";
+import { createModel, type Model } from "./model";
 import { mmd, shortPath } from "./viewer/text";
 import type { CodeMap, CodeSymbol, DataRelation, PathStep, RepoRoot, Walkthrough } from "./types";
 
@@ -164,37 +164,14 @@ export function buildDocument(map: CodeMap, walk: Walkthrough, opts: { title?: s
   };
 }
 
-/** A walk written before version 2: without `truncated`, and with `descendants` filled in on its steps. */
-function withLevels(old: Walkthrough & { truncated?: boolean }): Walkthrough {
-  const { truncated: _, ...walk } = old;
-  if (walk.steps.every((s) => typeof s.descendants === "number")) return walk;
-  const counts = descendantCounts(walk.steps);
-  return { ...walk, steps: walk.steps.map((s, i) => ({ ...s, descendants: counts[i] })) };
-}
-
-/** A version-1 document as version 2: no `generatedAt` or `truncated`, and the step levels added. */
-function upgradeV1(v1: CodeMapDocument & { generatedAt?: string; system: { truncated?: boolean } }): CodeMapDocument {
-  const { generatedAt: _, ...doc } = v1;
-  const { truncated: __, ...system } = doc.system;
-  const walk = withLevels(doc.render.walkthrough);
-  const levels = (s: PathStep) => ({ ...(s.parent !== undefined && { parent: s.parent + 1 }), descendants: s.descendants });
-  return {
-    ...doc,
-    version: VERSION,
-    system: { ...system, steps: system.steps.map((s, i) => ({ ...s, ...levels(walk.steps[i]) })) },
-    render: { ...doc.render, walkthrough: walk },
-  };
-}
-
-/** A document from parsed JSON: a code-map document as written (this version or 1), or a raw `{ map, walkthrough }` dump (`--raw`). */
+/** A document from parsed JSON: a code-map document as written, or a raw `{ map, walkthrough }` dump (`--raw`). */
 export function toDocument(value: unknown): CodeMapDocument {
   const v = value as Omit<Partial<CodeMapDocument>, "version"> & { version?: number; map?: CodeMap; walkthrough?: Walkthrough };
   if (v?.format === FORMAT) {
-    if (v.version === 1) return upgradeV1(v as unknown as Parameters<typeof upgradeV1>[0]);
-    if (v.version !== VERSION) throw new Error(`This file is code-map format version ${v.version}; this viewer reads versions 1 and ${VERSION}.`);
+    if (v.version !== VERSION) throw new Error(`This file is code-map format version ${v.version}; this viewer reads version ${VERSION}. Build the map again.`);
     return v as CodeMapDocument;
   }
-  if (v?.map?.symbols && v.walkthrough?.steps) return buildDocument(v.map, withLevels(v.walkthrough));
+  if (v?.map?.symbols && v.walkthrough?.steps) return buildDocument(v.map, v.walkthrough);
   throw new Error("This isn't a code-map file. Make one with the code-map CLI (-o map.json) or its MCP server.");
 }
 

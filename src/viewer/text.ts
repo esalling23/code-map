@@ -4,7 +4,6 @@ import type { CodeSymbol } from "../types";
 const MAX_FULL_LINES = 45;
 const CONTEXT = 3;
 
-export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 export const mmd = (s: string) => s.replace(/"/g, "#quot;").replace(/</g, "#lt;").replace(/>/g, "#gt;");
 
 export function language(file: string): string {

@@ -19,6 +19,8 @@ function mermaid(): Promise<Mermaid> {
     m.initialize({ startOnLoad: false, theme: dark ? "dark" : "default", flowchart: { htmlLabels: true, curve: "basis" }, maxTextSize: 200000 });
     return m;
   });
+  // A failed load (offline, CDN down) is retried by the next diagram instead of failing every one until reload.
+  loading.catch(() => (loading = undefined));
   return loading;
 }
 

@@ -41,13 +41,13 @@ Entry points are where outside work comes in. Good candidates:
 The tool can rank candidates inside a folder. These are functions nothing else calls, sorted by how much code they reach. Use the `list_entries` MCP tool, or:
 
 ```sh
-code-map <repo> -i src/modules/dynamic-data --list-entries
+code-map entries <repo> -i src/modules/dynamic-data
 ```
 
 Check what a spec matches before relying on it (the `list_symbols` MCP tool, or):
 
 ```sh
-code-map <repos…> -i <paths…> --list "DynamicDataController.*" --list "packages/client/src/dynamic-data/*.ts#*"
+code-map symbols <repos…> -i <paths…> -s "DynamicDataController.*" -s "packages/client/src/dynamic-data/*.ts#*"
 ```
 
 ## 4. Write the selection file
@@ -72,7 +72,7 @@ Choose **the functions a new person must understand**: the entry point of each f
 
 ## 5. Run, look, adjust
 
-Trace it (the `trace` tool, or the CLI with `--template`) and look at the step count and the warnings:
+Trace it (the `trace` tool, or `code-map trace … --template <file>`) and look at the step count and the warnings:
 - **A flow is missing:** its entry point isn't in the selection or isn't under the `-i` paths.
 - **Too many steps:** remove helpers, or select fewer methods of a big class.
 - **Parts that should connect show as separate starting points:** they probably talk over HTTP, queues or storage. Find where one side sends and the other receives (a URL path, a bucket path, a queue name) and add a `links` entry when you write the descriptions.

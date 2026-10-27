@@ -1,7 +1,5 @@
 // Levels: which steps to show when the viewer hides helpers with few steps beneath them. Pure; no DOM.
-import { descendantCounts } from "../../model";
 import type { CodeMapDocument } from "../../pagedata";
-import type { PathStep } from "../../types";
 
 /** The choices in the levels control: 0 shows every step. */
 export const LEVELS = [0, 1, 3, 5, 10] as const;
@@ -14,21 +12,9 @@ export interface StepLevel {
   descendants: number;
 }
 
-/** Parents and descendant counts from the walk itself, for documents that don't carry them (version 1). */
-export function levelsFromWalk(steps: Pick<PathStep, "index" | "parent">[]): StepLevel[] {
-  const descendants = descendantCounts(steps);
-  return steps.map((s, i) => ({ index: s.index, ...(s.parent !== undefined && { parent: s.parent }), descendants: descendants[i] }));
-}
-
-type LeveledStep = { step: number; parent?: number; descendants?: number };
-
-/** The document's own `parent` and `descendants` (1-based, version 2), or the same computed from the walk. */
-export function stepLevels(doc: Pick<CodeMapDocument, "system" | "render">): StepLevel[] {
-  const steps = doc.system.steps as LeveledStep[];
-  if (steps.length && steps.every((s) => typeof s.descendants === "number")) {
-    return steps.map((s) => ({ index: s.step - 1, ...(s.parent !== undefined && { parent: s.parent - 1 }), descendants: s.descendants! }));
-  }
-  return levelsFromWalk(doc.render.walkthrough.steps);
+/** Each step's parent and descendant count, from the document's 1-based `parent` and `descendants`. */
+export function stepLevels(doc: Pick<CodeMapDocument, "system">): StepLevel[] {
+  return doc.system.steps.map((s) => ({ index: s.step - 1, ...(s.parent !== undefined && { parent: s.parent - 1 }), descendants: s.descendants }));
 }
 
 /**
