@@ -1,8 +1,8 @@
 // The code-map document: what the CLI and MCP server write, and what the viewer reads.
 // The `system` part is for agents (a sitemap of the code); `render` is what the viewer needs to draw the page.
 // No Node or DOM APIs, so the viewer can also build a document from a raw `{ map, walkthrough }` dump.
-import { createModel, type Model } from "./model";
-import { mmd, shortPath } from "./page";
+import { createModel, descendantCounts, type Model } from "./model";
+import { mmd, shortPath } from "./viewer/text";
 import type { CodeMap, CodeSymbol, DataRelation, PathStep, RepoRoot, Walkthrough } from "./types";
 
 export const FORMAT = "code-map";
@@ -164,22 +164,19 @@ export function buildDocument(map: CodeMap, walk: Walkthrough, opts: { title?: s
   };
 }
 
-/** Fills in `descendants` on steps written before it existed. A parent always comes before its children. */
-function withLevels(walk: Walkthrough): Walkthrough {
+/** A walk written before version 2: without `truncated`, and with `descendants` filled in on its steps. */
+function withLevels(old: Walkthrough & { truncated?: boolean }): Walkthrough {
+  const { truncated: _, ...walk } = old;
   if (walk.steps.every((s) => typeof s.descendants === "number")) return walk;
-  const steps = walk.steps.map((s) => ({ ...s, descendants: 0 }));
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const p = steps[i].parent;
-    if (p !== undefined) steps[p].descendants += steps[i].descendants + 1;
-  }
-  return { ...walk, steps };
+  const counts = descendantCounts(walk.steps);
+  return { ...walk, steps: walk.steps.map((s, i) => ({ ...s, descendants: counts[i] })) };
 }
 
 /** A version-1 document as version 2: no `generatedAt` or `truncated`, and the step levels added. */
 function upgradeV1(v1: CodeMapDocument & { generatedAt?: string; system: { truncated?: boolean } }): CodeMapDocument {
   const { generatedAt: _, ...doc } = v1;
   const { truncated: __, ...system } = doc.system;
-  const { truncated: ___, ...walk } = withLevels(doc.render.walkthrough);
+  const walk = withLevels(doc.render.walkthrough);
   const levels = (s: PathStep) => ({ ...(s.parent !== undefined && { parent: s.parent + 1 }), descendants: s.descendants });
   return {
     ...doc,
@@ -276,9 +273,9 @@ function groupedSubgraphs(m: Model, nodesByFile: Map<string, DiagramNode[]>): { 
 
 
 /** What the page shows when hovering each node: its full name and kind. */
-function pathNodeInfo({ map, walk, dataIds, symbolOf }: Model): Record<string, NodeInfo> {
+function pathNodeInfo({ map, symbolOf }: Model, steps: PathStep[], dataIds: string[]): Record<string, NodeInfo> {
   const info: Record<string, NodeInfo> = {};
-  for (const s of walk.steps) {
+  for (const s of steps) {
     const sym = symbolOf(s);
     info[`s${s.index}`] = { title: `${s.index + 1}. ${sym.kind === "module" ? `${sym.file} (top level)` : sym.name}`, kind: "step" };
     if (s.parent === undefined && s.via.length) info[`x${s.index}`] = { title: map.symbols[s.via[0]].name, kind: "outside" };
@@ -288,16 +285,29 @@ function pathNodeInfo({ map, walk, dataIds, symbolOf }: Model): Record<string, N
 }
 
 
-/** The call path. `compact` leaves out the data types and their dotted arrows. */
-function pathDiagram(m: Model, compact = false): Diagram {
+/** The steps a call path shows, for the viewer's levels filter. */
+export interface StepFilter {
+  /** Step indexes (0-based) to draw; the rest leave the diagram, and shown steps keep their numbers. */
+  visible: Set<number>;
+  /** For each shown step, the hidden steps beneath it: drawn as one dashed "N hidden" box. */
+  hidden?: Map<number, number[]>;
+}
+
+/** The call path. `compact` leaves out the data types and their dotted arrows; `only` draws a subset of the steps. */
+function pathDiagram(m: Model, compact = false, only?: StepFilter): Diagram {
   const { map, walk } = m;
+  const keep = (i: number) => !only || only.visible.has(i);
+  const steps = walk.steps.filter((s) => keep(s.index));
+  // A data type that is also a step (a class) leaves with its step.
+  const dataUsed = new Map(steps.map((s) => [s.index, s.dataUsed.filter((d) => keep(m.stepIndexOf(d.id) ?? s.index))]));
+  const pathData = only ? m.dataIds.filter((id) => walk.selection?.data.includes(id) || steps.some((s) => dataUsed.get(s.index)!.some((d) => d.id === id))) : m.dataIds;
+  const dataIds = compact ? [] : pathData;
   const lines = ["flowchart TD"];
-  const dataIds = compact ? [] : m.dataIds;
   const dataNode = new Map(dataIds.map((id, i) => [id, `d${i}`]));
   const nodesByFile = new Map<string, DiagramNode[]>();
   const push = (file: string, node: DiagramNode) => (nodesByFile.get(file) ?? nodesByFile.set(file, []).get(file)!).push(node);
 
-  for (const s of walk.steps) {
+  for (const s of steps) {
     const sym = m.symbolOf(s);
     const label = sym.kind === "module" ? "top-level code" : sym.kind === "class" ? sym.name : `${sym.name}()`;
     const dot = sym.kind === "method" ? sym.name.indexOf(".") : -1;
@@ -318,12 +328,12 @@ function pathDiagram(m: Model, compact = false): Diagram {
   lines.push(...groups);
 
   const leadsSomewhere = new Set<string>();
-  for (const s of walk.steps) {
+  for (const s of steps) {
     if (s.parent === undefined && s.via.length) {
       lines.push(`  x${s.index}(["${mmd(map.symbols[s.via[0]].name)}"]) -.-> s${s.index}`);
     }
     for (const c of s.calls) {
-      if (c.step === undefined) continue;
+      if (c.step === undefined || !keep(c.step)) continue;
       leadsSomewhere.add(`s${s.index}`);
       const arrow = c.inferred ? "==>" : "-->";
       const shown = c.via.slice(0, 3).map((v) => map.symbols[v].name.split(".").pop());
@@ -331,14 +341,14 @@ function pathDiagram(m: Model, compact = false): Diagram {
       lines.push(`  s${s.index} ${arrow}${label} s${c.step}`);
     }
   }
-  for (const s of compact ? [] : walk.steps) {
-    for (const d of s.dataUsed) {
+  for (const s of compact ? [] : steps) {
+    for (const d of dataUsed.get(s.index)!) {
       const step = m.stepOf(d.id);
       const target = step ? `s${step.index}` : dataNode.get(d.id);
       lines.push(`  s${s.index} -. ${d.relation} .-> ${target}`);
     }
   }
-  for (const l of walk.links ?? []) {
+  for (const l of (walk.links ?? []).filter((l) => keep(l.from) && keep(l.to))) {
     leadsSomewhere.add(`s${l.from}`);
     lines.push(`  s${l.from} -. "${mmd(l.label)}" .-> s${l.to}`);
   }
@@ -354,7 +364,31 @@ function pathDiagram(m: Model, compact = false): Diagram {
   lines.push("  classDef data stroke-dasharray:4 3");
   lines.push("  class s0 entry");
   if (dataIds.length) lines.push(`  class ${[...dataNode.values()].join(",")} data`);
-  return { source: lines.join("\n"), info: { ...clusters, ...pathNodeInfo(m) } };
+  const info = { ...clusters, ...pathNodeInfo(m, steps, pathData) };
+  const hidden = only?.hidden ?? new Map<number, number[]>();
+  for (const [p, under] of hidden) {
+    lines.push(`  h${p}(["${under.length} hidden"])`, `  s${p} -.- h${p}`);
+    info[`h${p}`] = { title: `${under.length} helper step${under.length === 1 ? "" : "s"} hidden under step ${p + 1}; click to show`, kind: "hidden" };
+  }
+  if (hidden.size) lines.push("  classDef hidden stroke-dasharray:2 3,opacity:.8", `  class ${[...hidden.keys()].map((p) => `h${p}`).join(",")} hidden`);
+  return { source: lines.join("\n"), info };
+}
+
+/** The call path and route for the viewer's levels filter. */
+export interface PathView {
+  path: Diagram;
+  compact: Diagram;
+  route: RouteStop[];
+}
+
+/** The call path of a document showing only some steps, made from the document alone; with every step shown, the document's own. */
+export function pathView(doc: CodeMapDocument, only: StepFilter): PathView {
+  const d = doc.render;
+  const walk = d.walkthrough;
+  if (walk.steps.every((s) => only.visible.has(s.index))) return { path: d.diagrams.path, compact: d.diagrams.compact, route: d.route };
+  // The document keeps every symbol the diagram names, which is all the model needs from the map.
+  const m = createModel({ roots: d.roots, files: [], fileDocs: {}, symbols: d.symbols, calls: [], data: [], imports: [] }, walk);
+  return { path: pathDiagram(m, false, only), compact: pathDiagram(m, true, only), route: routeOf(m.map, walk, only.visible) };
 }
 
 export interface RouteStop {
@@ -366,10 +400,12 @@ export interface RouteStop {
   nav: boolean;
 }
 
-/** The steps in walkthrough order, each with the arrow that leads into it. */
-export function routeOf(map: CodeMap, walk: Walkthrough): RouteStop[] {
-  return walk.steps.map((s) => {
-    const into = (walk.links ?? []).filter((l) => l.to === s.index && l.from !== s.index);
+/** The steps in walkthrough order, each with the arrow that leads into it; only the `visible` ones when given. */
+export function routeOf(map: Pick<CodeMap, "symbols">, walk: Walkthrough, visible?: Set<number>): RouteStop[] {
+  const keep = (i: number) => !visible || visible.has(i);
+  const links = (walk.links ?? []).filter((l) => keep(l.from) && keep(l.to));
+  return walk.steps.filter((s) => keep(s.index)).map((s) => {
+    const into = links.filter((l) => l.to === s.index && l.from !== s.index);
     const link = into.find((l) => l.from === s.index - 1) ?? into.sort((a, b) => b.from - a.from)[0];
     const from = s.parent !== undefined ? `s${s.parent}` : link ? `s${link.from}` : null;
     return { id: `s${s.index}`, from, nav: map.symbols[s.symbolId].kind !== "class" && map.symbols[s.symbolId].kind !== "data" };

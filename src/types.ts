@@ -117,8 +117,6 @@ export interface Walkthrough {
   entry: string;
   overview: string;
   steps: PathStep[];
-  /** Never set: the walk follows every call in scope. Old raw dumps may still carry it. */
-  truncated?: boolean;
   /** Set when the walkthrough is limited to a selection of symbols. */
   selection?: { ids: string[]; data: string[] };
   context?: SystemContext;

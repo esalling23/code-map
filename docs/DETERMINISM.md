@@ -1,6 +1,6 @@
 # Determinism review: what decides a code-map document
 
-This review answers one question: **is a code-map document fully determined by the code, or do agents shape it?** It describes the code on baseline commit `5a6dd61`. All `file:line` references point at that commit. Tasks 03 and 04 change some of this behaviour; the last section states the intended end state.
+This review answers one question: **is a code-map document fully determined by the code, or do agents shape it?** Sections 1–5 describe the code on baseline commit `5a6dd61`, and their `file:line` references point at that commit. Tasks 03 and 04 changed some of this behaviour. Section 6 says what was implemented, with references to the current code.
 
 ## 1. Summary
 
@@ -160,12 +160,29 @@ The claim to check: *agents never edit the structure. They choose the scope, and
    - `--title` (CLI) and `title` (MCP `build`) set the title outside the descriptions file (`src/cli.ts:133`, `src/mcp.ts:163`).
 4. **Files that agents or people edit outside the tool** (README, ARCHITECTURE, `package.json`) change area boundaries and hand-offs (section 4.5). This is not an agent editing the JSON. But it is a way for prose files to change the structure.
 
-## 6. Target
+## 6. Implemented
 
-The end state the user chose. Tasks 03 and 04 implement it.
+The end state the user chose, as tasks 03, 04 and 05 built it. References point at the current code.
 
-- **Structure:** decided only by the code and the scope (`dirs`, `include`, `tests`, `entry`, `select`). The same code and scope give the same steps, calls, data, areas and diagrams.
-- **No silent truncation:** `maxDepth` and `maxSteps` stop being knobs for tuning the size. One hard safety cap remains. When a walk would exceed it, the build fails with advice to narrow the scope. It never produces a partial walk.
-- **No wall-clock time** in the document. `generatedAt` is removed, so two builds of the same code and scope are byte-identical.
-- **Prose:** a separate authored layer (title, summary, role, overview, area and step descriptions, and links), matched by symbol id so that it survives re-tracing. Unmatched entries produce warnings.
-- **Step metrics:** each step records `descendants`, the count of all steps beneath it, so the viewer can show "levels" and hide helpers. The JSON stays complete; hiding happens only in the viewer.
+- **Structure comes only from the code and the scope** (`dirs`, `include`, `tests`, `entry`, `select`, and `maxHops` with a selection).
+  - `maxDepth` and `maxSteps` are gone from `tracePath` (`src/trace.ts:8-15`), `walkMap` (`src/pipeline.ts`), the CLI and the MCP tools.
+  - The CLI rejects `--max-depth` and `--max-steps` with a message that says to narrow the scope (`src/cli.ts:68-70`). The MCP tools' schemas no longer list them, so zod drops them if an old caller still sends them.
+  - The `trace` tool reports the step count and the steps with the most steps beneath them, and its advice says to narrow the scope, never to drop steps (`src/mcp.ts:126-132`). The agent guide says the same (`docs/agents/workflow.md`, step 2).
+- **No silent truncation.** The walk follows every reachable call. One safety cap remains: past `STEP_CAP` (2000) steps, `tracePath` throws and no map is written (`src/trace.ts:6`, `src/trace.ts:160-162`). `truncated` is gone from the walk and the document, and so is the overview sentence that said to raise the limits.
+- **No wall-clock time.** `generatedAt` is gone. `buildDocument` writes only the format, the version, `generator.args`, `system` and `render` (`src/pagedata.ts:148-165`), so two builds of the same code and scope are byte-identical (`test/determinism.test.ts:12`).
+- **Document version 2** (`src/pagedata.ts:9`). Each `system.steps[]` entry has `parent` (the 1-based step of its first caller) and `descendants` (`src/pagedata.ts:23-26`, filled in by `stepFacts` at `src/pagedata.ts:81-99`).
+  - `descendants` is counted by one function, `descendantCounts` (`src/model.ts:15-22`). The walk uses it (`src/trace.ts:210`), and so do old files and the viewer's fallback.
+  - `toDocument` still reads version-1 documents and raw `{map, walkthrough}` dumps. It drops `generatedAt` and `truncated` and fills in the step levels (`src/pagedata.ts:168-199`).
+- **Prose is a separate layer.** `applyDescriptions` matches steps by symbol id and warns for every step, area or link that doesn't match (`src/authored.ts:52-103`). It changes only text and links, never steps, calls or data.
+- **Levels in the viewer.** The JSON stays complete; hiding happens only in the viewer.
+  - `stepLevels` reads `parent` and `descendants` from a version-2 document. It falls back to computing them from the walk (`src/viewer/levels/levels.ts:18-32`).
+  - `visibleSteps` and `hiddenGroups` decide which steps show at a threshold and which hidden steps sit under each shown one (`src/viewer/levels/levels.ts:38-71`).
+  - `pathView` makes the call path and route for the shown steps with the same diagram code as the document (`src/pagedata.ts:385-392`). Shown steps keep their numbers.
+
+**Not changed.** These inputs from section 2 still shape the document:
+
+- The absolute checkout path in `render.roots[].dir`.
+- `generator.args` as typed.
+- README, ARCHITECTURE and `package.json` files, which decide area boundaries and hand-offs.
+- The `--llm` and `--title` side doors for prose.
+- Selection order, which decides step numbers.

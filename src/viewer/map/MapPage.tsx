@@ -1,11 +1,10 @@
 // A whole map: header with the levels control, intro, diagrams, walkthrough and data.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CodeMapDocument } from "../../pagedata";
+import { dataIdsOf } from "../../model";
+import { pathView, type CodeMapDocument } from "../../pagedata";
 import { Diagrams } from "../diagram/Diagrams";
 import { LevelControl, useLevel } from "../levels/LevelControl";
 import { hiddenGroups, stepLevels, visibleSteps } from "../levels/levels";
-import { pathView } from "../levels/pathView";
-import { dataIdsOf } from "../text";
 import { MapProvider, type MapState } from "./context";
 import { Intro } from "./Intro";
 import { DataSection, Walkthrough } from "./Walkthrough";
@@ -22,7 +21,7 @@ export function MapPage({ doc }: { doc: CodeMapDocument }) {
   const levels = useMemo(() => stepLevels(doc), [doc]);
   const visible = useMemo(() => visibleSteps(levels, level, expanded), [levels, level, expanded]);
   const hidden = useMemo(() => hiddenGroups(levels, visible), [levels, visible]);
-  const view = useMemo(() => pathView(doc, visible, hidden), [doc, visible, hidden]);
+  const view = useMemo(() => pathView(doc, { visible, hidden }), [doc, visible, hidden]);
 
   const expand = useCallback((step: number) => setExpanded((e) => new Set(e).add(step)), []);
   const goToStep = useCallback(

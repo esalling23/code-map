@@ -1,7 +1,6 @@
 // The "System diagram" section: the call path (full and compact) and the files diagram, as tabs.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { Diagram as DiagramData } from "../../pagedata";
-import type { PathView } from "../levels/pathView";
+import type { Diagram as DiagramData, PathView } from "../../pagedata";
 import { useMap } from "../map/context";
 import { DiagramFrame, useDiagram } from "./Diagram";
 import { follow } from "./glide";

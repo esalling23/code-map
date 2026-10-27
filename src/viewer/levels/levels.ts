@@ -1,4 +1,5 @@
 // Levels: which steps to show when the viewer hides helpers with few steps beneath them. Pure; no DOM.
+import { descendantCounts } from "../../model";
 import type { CodeMapDocument } from "../../pagedata";
 import type { PathStep } from "../../types";
 
@@ -15,16 +16,8 @@ export interface StepLevel {
 
 /** Parents and descendant counts from the walk itself, for documents that don't carry them (version 1). */
 export function levelsFromWalk(steps: Pick<PathStep, "index" | "parent">[]): StepLevel[] {
-  const parent = new Map(steps.map((s) => [s.index, s.parent]));
-  const descendants = new Map(steps.map((s) => [s.index, 0]));
-  for (const s of steps) {
-    const seen = new Set<number>();
-    for (let p = s.parent; p !== undefined && !seen.has(p); p = parent.get(p)) {
-      seen.add(p);
-      descendants.set(p, (descendants.get(p) ?? 0) + 1);
-    }
-  }
-  return steps.map((s) => ({ index: s.index, ...(s.parent !== undefined && { parent: s.parent }), descendants: descendants.get(s.index)! }));
+  const descendants = descendantCounts(steps);
+  return steps.map((s, i) => ({ index: s.index, ...(s.parent !== undefined && { parent: s.parent }), descendants: descendants[i] }));
 }
 
 type LeveledStep = { step: number; parent?: number; descendants?: number };

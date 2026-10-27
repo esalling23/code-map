@@ -75,7 +75,7 @@ describe("trace", () => {
       "OrderRepo.save",
     ]);
     expect(walk.steps[4].parent).toBe(3);
-    expect(walk.truncated).toBeUndefined();
+    expect("truncated" in walk).toBe(false);
   });
 
   test("follows every reachable call: each call leads to a step", () => {

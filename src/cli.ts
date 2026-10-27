@@ -36,9 +36,6 @@ Options:
                          walkthrough as JSON
   -i, --include <path>   Only analyze this sub-path of <dir> (repeatable)
       --tests            Include *.test.* / *.spec.* files
-
-  The map follows every call reachable from the entry or selection, within the analyzed
-  files. To focus it, narrow the scope with -i, -s or -e. A walk over 2000 steps fails.
       --max-hops <n>     With --select: longest chain of unselected functions to look
                          through between two selected ones (default: 6)
       --list-entries     Print likely entry points and exit
@@ -56,6 +53,9 @@ Options:
       --model <id>       Model for --llm (default: claude-opus-5-5)
       --title <text>     Page title
   -h, --help             Show this help
+
+  The map follows every call reachable from the entry or selection, within the analyzed
+  files. To focus it, narrow the scope with -i, -s or -e. A walk over 2000 steps fails.
 `;
 
 async function main() {

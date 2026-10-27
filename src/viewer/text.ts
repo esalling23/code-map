@@ -1,5 +1,5 @@
 // Pure text helpers shared by the document builder and the viewer. No Node or DOM APIs.
-import type { CodeSymbol, Walkthrough } from "../types";
+import type { CodeSymbol } from "../types";
 
 const MAX_FULL_LINES = 45;
 const CONTEXT = 3;
@@ -46,8 +46,6 @@ export function excerpt(sym: CodeSymbol, focus: number[]): ExcerptLine[] {
 }
 
 export const allLines = (sym: CodeSymbol): ExcerptLine[] => sym.code.split("\n").map((text, i) => ({ line: sym.startLine + i, text }));
-
-export const dataIdsOf = (walk: Walkthrough) => [...new Set([...walk.steps.flatMap((s) => s.dataUsed.map((d) => d.id)), ...(walk.selection?.data ?? [])])];
 
 /** JSON safe to put inside a `<script>` element: browsers don't decode entities there, so only `<` is escaped. */
 export const scriptJson = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");

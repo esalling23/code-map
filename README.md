@@ -22,7 +22,9 @@ The call path has three more controls:
 - **Full path** highlights the route the walkthrough takes: each step's box and the arrow that leads into it, from step 1 to the last. Everything else fades. It works in both modes.
 - **◀ / ▶** (or the ← / → keys) step through the functions and methods in walkthrough order. Each move highlights the arrow into the new step, keeps the arrows walked so far highlighted, and glides the view along that arrow until the box is centred. Click the step's name to read it in the walkthrough; × or Esc stops. While stepping, a panel beside the diagram shows the step's description, signature and calls, the same text as in the walkthrough; its "step N" links move the navigator there. **Details** or the panel's × hides it, and the page remembers that choice. The view centres each box in the space the panel leaves free.
 
-Each snippet is stored in the page once and copied into a tab the first time it opens, so a type shown in ten steps doesn't make the page ten times bigger.
+**Levels.** A map keeps every step, so a big one can be long. The control under the title ("Show steps with at least N steps beneath them": All, 1+, 3+, 5+, 10+) hides helper steps that have fewer than N steps beneath them, using each step's `descendants`. The entry and other starting points always show, and so does every step above a shown one. Step numbers stay the same, so a gap in the numbering means hidden steps. In the walkthrough, a step with hidden helpers has a "N helper steps hidden" button; in the call path, a dashed "N hidden" box. Either one shows that group. The viewer remembers the setting.
+
+Each tab's content is built the first time the tab opens, so a type shown in ten steps doesn't make the page ten times bigger.
 
 ## Where the descriptions come from
 
@@ -81,11 +83,12 @@ ANTHROPIC_API_KEY=... bun run src/cli.ts ./my-app -e handleRequest --llm
 | `--tests` | Include `*.test.*` / `*.spec.*` files |
 | `--max-hops` | With `--select`: the most unselected functions to look through between two selected ones (default 6) |
 
-The walk follows every call reachable from the entry or selection inside the analyzed files. It never drops steps. To focus a map, narrow the scope: `-i` for fewer folders, `-s` for an exact set of functions, or `-e` for a later starting point. In the viewer, people hide small helpers with the level filter. A walk over 2000 steps fails with an error rather than writing part of a map; narrow the scope and run it again.
 | `--list <spec>` | Print what a spec or glob matches, with caller and callee counts, then exit |
 | `--template <file>` | Also write a fill-in JSON with every step and area: facts, the generated draft, and an empty `description` |
 | `--descriptions <file>` | Use a filled-in template's `title`, `summary`, `role`, `overview`, area and step descriptions, and `links` in place of generated text |
 | `--llm`, `--model` | Descriptions written by Claude (default model `claude-opus-5-5`) |
+
+The walk follows every call reachable from the entry or selection inside the analyzed files. It never drops steps, and there is no depth or step limit to tune (`--max-depth` and `--max-steps` were removed; passing them is an error). To focus a map, narrow the scope: `-i` for fewer folders, `-s` for an exact set of functions, or `-e` for a later starting point. In the viewer, people hide small helpers with the levels filter. A walk over 2000 steps fails with an error rather than writing part of a map; narrow the scope and run it again.
 
 ## Several repos
 
@@ -152,7 +155,7 @@ The file has no timestamp, so two builds from the same code and arguments are by
 
 ## Viewer
 
-One page (`src/viewer/`) draws any code-map document:
+One page (`src/viewer/`, a React app) draws any code-map document. Bun bundles it, with its CSS, into one self-contained HTML file; the only things it loads from the network are Mermaid and highlight.js from a CDN.
 
 - **Hosted:** `bun run build:viewer` writes `dist/index.html`, a single static file to put on any static host. People drop or pick a `.json` file; it's read in the browser, never uploaded. The last 20 files are kept in the browser's IndexedDB and listed on the start page (`#map=<id>` links reopen one).
 - **Local:** `code-map view [map.json] [--port 4173]` serves the viewer on localhost and opens the file. Reload to see a rebuilt map.
@@ -196,10 +199,10 @@ bun run src/cli.ts . -i src -s docs/maps/orders.selection.txt \
 | `src/trace.ts` | Resolves the entry and the `--select` specs, ranks candidate entries, and walks the call graph depth-first in source order. A function reached a second time links back to its first step instead of being repeated. With a selection, it walks through unselected functions to find the next selected one. |
 | `src/context.ts` | Groups the steps into areas, finds each area's docs, and lists the hand-offs between areas. |
 | `src/describe.ts` | Heuristic descriptions built from doc comments, the caller, data relations, calls in order and outside calls, so no network is needed. `--llm` replaces them with Claude's narration of the whole path. |
-| `src/pagedata.ts` | Builds the code-map document: the `system` sitemap for agents, plus the render data (Mermaid diagram sources, the route, the symbols shown). |
+| `src/model.ts` | One traced path as a model: the map and walkthrough with the lookups the other steps share (step of a symbol, data types and their users, repo of a file), plus `dataIdsOf` and `descendantCounts`. Pure. |
+| `src/pagedata.ts` | Builds the code-map document: the `system` sitemap for agents, plus the render data (Mermaid diagram sources, the route, the symbols shown). `toDocument` reads version-2 and version-1 documents and raw dumps; `pathView` makes the call path for a subset of steps, for the levels filter. Pure, so the viewer uses it too. |
 | `src/pipeline.ts` | The shared steps from folders to document and output files, used by the CLI and the MCP server. |
-| `src/page.ts` | Turns a document into the page's HTML. Pure, so it runs in the browser. |
-| `src/viewer/` | The viewer app (upload, recent files in IndexedDB, `?src=` loading), the page's behavior (zoom, hover, step navigator) and CSS, and `build.ts`, which bundles it into one HTML file. |
+| `src/viewer/` | The React viewer: the start page (upload, recent files in IndexedDB, `?src=` and `#map=` loading), the map page (`map/`), the diagrams with zoom, hover and the step navigator (`diagram/`), the levels filter (`levels/`), and `build.ts`, which bundles it into one HTML file. |
 | `src/mcp.ts`, `src/check.ts`, `src/serve.ts` | The MCP server, the plain-English checker, and `code-map view`. |
 
 ## Limits

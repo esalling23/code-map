@@ -3,8 +3,23 @@
 // Free functions stay free when they only read a symbol or a step by position, which costs nothing to repeat:
 // stepFacts, defaultTitle and routeOf (callers pass a bare `{ symbols }` map) and the Mermaid line writers.
 // No Node APIs: anything that reads files (context docs, readDescriptions) stays outside, since the viewer bundles this.
-import { dataIdsOf } from "./page";
 import type { CodeMap, CodeSymbol, PathStep, RepoRoot, Walkthrough } from "./types";
+
+/** Data types the steps use, then the selection's, without repeats, in first-use order. */
+export const dataIdsOf = (walk: Pick<Walkthrough, "steps" | "selection">) => [...new Set([...walk.steps.flatMap((s) => s.dataUsed.map((d) => d.id)), ...(walk.selection?.data ?? [])])];
+
+/**
+ * How many steps sit beneath each step in the step tree (all levels), by position. Steps are in walk order,
+ * so a parent always comes before its children and one pass from the end adds up each subtree.
+ */
+export function descendantCounts(steps: Pick<PathStep, "parent">[]): number[] {
+  const counts = steps.map(() => 0);
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const p = steps[i].parent;
+    if (p !== undefined) counts[p] += counts[i] + 1;
+  }
+  return counts;
+}
 
 export interface Model {
   map: CodeMap;

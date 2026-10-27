@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { descendantCounts } from "./model";
 import type { CallEdge, CodeMap, PathStep, StepCall, Walkthrough } from "./types";
 
 /** The most steps a walk may have before it fails. A real map never gets close; hitting it means the scope is too wide. */
@@ -206,11 +207,7 @@ export function tracePath(map: CodeMap, entryId: string | undefined, opts: Trace
   }
 
   if (!steps.length) throw new Error("The path has no steps.");
-  // A parent always comes before its children, so one pass from the end adds up each subtree.
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const p = steps[i].parent;
-    if (p !== undefined) steps[p].descendants += steps[i].descendants + 1;
-  }
+  descendantCounts(steps).forEach((n, i) => (steps[i].descendants = n));
   return {
     entry: entry && isSelected(entry) ? entry : steps[0].symbolId,
     overview: "",

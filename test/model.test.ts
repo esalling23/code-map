@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { analyze } from "../src/analyze";
-import { createModel } from "../src/model";
-import { dataIdsOf } from "../src/page";
+import { createModel, dataIdsOf } from "../src/model";
 import { resolveEntry, resolveSelection, tracePath } from "../src/trace";
 
 const map = analyze(join(import.meta.dir, "fixture"));

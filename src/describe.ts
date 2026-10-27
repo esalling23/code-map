@@ -97,7 +97,6 @@ export function describeOverview(m: Model): string {
   const starts = walk.steps.filter((s) => s.parent === undefined).length;
   if (starts > 1) text += ` It has ${starts} separate starting points.`;
   if (data.length) text += ` Along the way it handles these data types: ${list(data.slice(0, 8).map(code))}${data.length > 8 ? ` and ${data.length - 8} more` : ""}.`;
-  if (walk.truncated) text += " The path was cut short at the depth or step limit; raise --max-depth or --max-steps to see more.";
   return text;
 }
 

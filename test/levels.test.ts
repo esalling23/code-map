@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { analyze } from "../src/analyze";
 import { describeHeuristic } from "../src/describe";
-import { buildDocument, type CodeMapDocument } from "../src/pagedata";
+import { buildDocument, pathView, type CodeMapDocument } from "../src/pagedata";
 import { tracePath } from "../src/trace";
 import { hiddenGroups, levelsFromWalk, stepLevels, visibleSteps } from "../src/viewer/levels/levels";
-import { pathView } from "../src/viewer/levels/pathView";
 
 // 0 ─┬─ 1 ─┬─ 2 ── 3
 //    │     └─ 4
@@ -67,7 +66,7 @@ describe("filtered call path", () => {
   const all = new Set(levels.map((l) => l.index));
 
   test("with every step shown it is the document's own diagrams and route", () => {
-    const view = pathView(doc, all, new Map());
+    const view = pathView(doc, { visible: all });
     expect(view.path).toBe(doc.render.diagrams.path);
     expect(view.route).toBe(doc.render.route);
   });
@@ -76,7 +75,7 @@ describe("filtered call path", () => {
     const visible = visibleSteps(levels, 1);
     const hidden = hiddenGroups(levels, visible);
     expect(visible.size).toBeLessThan(levels.length);
-    const view = pathView(doc, visible, hidden);
+    const view = pathView(doc, { visible, hidden });
     for (const l of levels) {
       const node = new RegExp(`\\bs${l.index}\\["`);
       expect(node.test(view.path.source)).toBe(visible.has(l.index));

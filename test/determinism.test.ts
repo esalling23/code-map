@@ -67,7 +67,16 @@ describe("a complete, deterministic map", () => {
     expect(doc.version).toBe(2);
     expect("generatedAt" in doc).toBe(false);
     expect("truncated" in doc.system).toBe(false);
+    expect("truncated" in doc.render.walkthrough).toBe(false);
     expect(doc.system.steps.map((s) => [s.parent, s.descendants])).toEqual(v2.system.steps.map((s) => [s.parent, s.descendants]));
     expect(doc.render.walkthrough.steps.map((s) => s.descendants)).toEqual([5, 4, 0, 1, 0, 0]);
+  });
+
+  test("an old raw dump still loads: its `truncated` flag goes and its step levels are filled in", () => {
+    const walk = tracePath(map, "src/server.ts#handlePost");
+    const old = { ...walk, truncated: false, steps: walk.steps.map(({ descendants: _, ...s }) => s) };
+    const doc = toDocument({ map, walkthrough: old });
+    expect("truncated" in doc.render.walkthrough).toBe(false);
+    expect(doc.system.steps.map((s) => s.descendants)).toEqual(walk.steps.map((s) => s.descendants));
   });
 });

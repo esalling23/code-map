@@ -1,6 +1,7 @@
 // The walkthrough (the shown steps, in order) and the data section.
 import { useEffect, useRef } from "react";
-import { dataIdsOf, shortPath } from "../text";
+import { dataIdsOf } from "../../model";
+import { shortPath } from "../text";
 import { useMap } from "./context";
 import { DataSnippet } from "./Snippets";
 import { Step } from "./Step";
