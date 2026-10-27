@@ -154,3 +154,10 @@ h2{margin:36px 0 8px;font-size:20px}
 .peek{border:0;background:none;padding:0;cursor:pointer;font:inherit;color:inherit}
 .peek:hover code{outline:1px solid var(--accent)}
 @media (max-width:900px){.step{grid-template-columns:minmax(0,1fr)}.tabset.main{position:static}.tabset.vertical{grid-template-columns:minmax(0,1fr)}.tabset.vertical>.tabbar{flex-direction:row;border-right:0;border-bottom:1px solid var(--line);padding:0 0 6px}}
+.step.targeted .explain{outline:2px solid var(--accent);outline-offset:6px;border-radius:6px}
+.area.targeted{outline:2px solid var(--accent)}
+.levels{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:0 0 4px}
+.levels select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:2px 6px}
+.hiddensteps{display:inline-block;margin-top:10px;border:1px dashed var(--line);background:var(--bg);color:var(--accent);border-radius:6px;padding:3px 10px;cursor:pointer;font:inherit;font-size:13px}
+.hiddensteps:hover{border-color:var(--accent)}
+.diagram>.error{margin:6px 10px;color:var(--warn);font-size:13px}

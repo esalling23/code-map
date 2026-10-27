@@ -4,14 +4,14 @@ import { analyze } from "../src/analyze";
 import { applyDescriptions, buildTemplate } from "../src/authored";
 import { describeHeuristic } from "../src/describe";
 import { readFileSync } from "node:fs";
-import { excerpt, renderPage, shortPath } from "../src/page";
+import { excerpt, shortPath } from "../src/viewer/text";
+import { renderMapHtml } from "../src/viewer/ssr";
 import { buildDocument, routeOf } from "../src/pagedata";
 import { entryCandidates, readSelectionSpecs, resolveEntry, resolveSelection, tracePath } from "../src/trace";
 
 const map = analyze(join(import.meta.dir, "fixture"));
-const renderHtml = (...args: Parameters<typeof buildDocument>) => renderPage(buildDocument(...args));
+const renderHtml = (...args: Parameters<typeof buildDocument>) => renderMapHtml(buildDocument(...args));
 const css = readFileSync(join(import.meta.dir, "../src/viewer/page.css"), "utf8");
-const behavior = readFileSync(join(import.meta.dir, "../src/viewer/behavior.js"), "utf8");
 
 describe("analyze", () => {
   test("indexes functions, methods, classes and data", () => {
@@ -107,8 +107,9 @@ describe("describe + render", () => {
     expect(html).toContain("subgraph");
     expect(html).toContain('data-key="data:src/types.ts#Order"');
     expect(html).toContain('data-open="call:src/service.ts#OrderService.place"');
-    // Each snippet is stored once, however many tabs show it.
-    expect(html.match(/<template id="t\d+">/g)?.length).toBe(new Set(html.match(/data-tpl="t\d+"/g)).size);
+    // Tab panels are built when first opened: only the first tab of each set has content.
+    expect(html).toContain('<div class="tabpanel" role="tabpanel" hidden=""></div>');
+    expect(html).not.toContain("<template");
   });
 
   test("excerpts long functions around the focus lines", () => {
@@ -239,7 +240,7 @@ describe("system context", () => {
     expect(html).toContain("<strong>orders</strong> → <strong>payments</strong>");
     expect(html).toContain('href="#area-3">audit</a>');
     expect(html).toContain('data-zoom="fit"');
-    expect(behavior).toContain("function setupHover(");
+    expect(html).toContain('<div class="tip" hidden="">');
   });
 });
 
@@ -286,7 +287,8 @@ describe("authored descriptions", () => {
 });
 
 describe("diagram layout", () => {
-  const html = renderHtml(map, describeHeuristic(map, tracePath(map, "src/server.ts#handlePost")));
+  const doc = buildDocument(map, describeHeuristic(map, tracePath(map, "src/server.ts#handlePost")));
+  const html = renderMapHtml(doc);
   const source = html.slice(html.indexOf('<pre class="mermaid">'), html.indexOf("</pre>"));
 
   test("a class with one method on the path keeps its full label and the file's box", () => {
@@ -295,7 +297,7 @@ describe("diagram layout", () => {
   });
 
   test("hover info gives every node and file box its full name", () => {
-    const info = JSON.parse(html.match(/<script type="application\/json" id="info-path">([^<]*)<\/script>/)![1]);
+    const info = doc.render.diagrams.path.info;
     expect(info.s1).toEqual({ title: "2. OrderService.place", kind: "step" });
     expect(info.f1).toEqual({ title: "src/service.ts", kind: "file" });
     expect(Object.values(info).some((v: any) => v.kind === "data")).toBe(true);
@@ -344,7 +346,7 @@ describe("call path views", () => {
     expect(compact).not.toMatch(/\bd\d+\[\(/);
     expect(compact).not.toContain(".-&gt; d");
     expect(compact).toContain("s0 --&gt;");
-    expect(html).toContain('id="tab-pathc" data-info="info-path" data-path-view="1" hidden');
+    expect(html).toContain('id="tab-pathc" data-path-view="1" hidden=""');
     expect(html).toContain('data-mode="compact"');
     expect(html).toContain('data-path="full"');
     expect(html).toContain('data-nav="next"');
@@ -361,8 +363,6 @@ describe("call path views", () => {
     for (const [i, s] of walk.steps.entries()) expect(route[i].from).toBe(s.parent === undefined ? null : `s${s.parent}`);
     const linked = { ...walk, links: [{ from: 0, to: 2, label: "x" }], steps: walk.steps.map((s) => (s.index === 2 ? { ...s, parent: undefined } : s)) };
     expect(routeOf(map, linked)[2].from).toBe("s0");
-    const embedded = JSON.parse(html.match(/<script type="application\/json" id="route">([^<]*)<\/script>/)![1]);
-    expect(embedded).toEqual(route);
   });
 });
 
