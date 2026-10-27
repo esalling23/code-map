@@ -75,13 +75,12 @@ describe("trace", () => {
       "OrderRepo.save",
     ]);
     expect(walk.steps[4].parent).toBe(3);
-    expect(walk.truncated).toBe(false);
+    expect(walk.truncated).toBeUndefined();
   });
 
-  test("respects the depth limit", () => {
-    const walk = tracePath(map, "src/server.ts#handlePost", { maxDepth: 1 });
-    expect(walk.steps).toHaveLength(2);
-    expect(walk.truncated).toBe(true);
+  test("follows every reachable call: each call leads to a step", () => {
+    const walk = tracePath(map, "src/server.ts#<module>");
+    expect(walk.steps.flatMap((s) => s.calls).every((c) => c.step !== undefined)).toBe(true);
   });
 });
 

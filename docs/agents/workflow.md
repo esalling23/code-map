@@ -17,13 +17,18 @@ Turn the request into the **repo folders** (`dirs`), the **sub-paths** to analyz
 
 If you can't find a repo, ask for its path. A map of the wrong code is worse than no map.
 
-## 2. Trace, and check the size
+## 2. Trace, and check the scope
 
-Call `trace` with a `templatePath`. It reports the step count and writes the fill-in file. Aim for about **8–40 steps**:
-- fewer than 8: the selection or depth is too narrow;
-- over 40, or truncated: too wide; trim the selection or lower `maxDepth`.
+Call `trace` with a `templatePath`. It writes the fill-in file and reports the step count and the steps with the most steps beneath them.
 
-Fix the selection and trace again before you write anything.
+The map covers **everything reachable in the scope you chose**: the `dirs`, `include`, `tests`, `entry` and `select` you passed (and `maxHops` with a selection). It never drops steps, and two builds of the same code give the same file. If the map covers code you did not mean to map, narrow the scope and trace again:
+- `include` to analyze fewer folders;
+- `select` to map an exact set of functions;
+- `entry` to start later in the flow.
+
+Never remove steps from a map to make it shorter. People hide small helpers with the viewer's level filter. A walk over 2000 steps fails; narrow the scope.
+
+Fix the scope and trace again before you write anything.
 
 The fill-in file lists every step and area with the facts you need (file and lines, caller, calls, data, outside calls, doc comment, quoted docs), the tool's own `draft`, and an empty `description` for you.
 

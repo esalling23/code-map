@@ -31,6 +31,7 @@ describe("code-map document", () => {
     expect(doc.system.areas.map((a) => [a.name, a.steps])).toEqual([["orders", [1]], ["payments", [2]], ["audit", [3]]]);
     expect(doc.system.links).toEqual([{ from: 3, to: 1, label: "audit queue" }]);
     expect(doc.system.handoffs[0]).toMatchObject({ fromStep: 1, step: 2 });
+    expect(doc.system.steps.map((s) => [s.parent, s.descendants])).toEqual([[undefined, 2], [1, 1], [2, 0]]);
     expect(doc.generator?.args).toEqual(["test/areas", "-e", "Orders.place"]);
   });
 
@@ -51,6 +52,7 @@ describe("code-map document", () => {
     expect(toDocument({ map: shop, walkthrough: walk }).system.steps).toHaveLength(3);
     expect(() => toDocument({ hello: 1 })).toThrow("isn't a code-map file");
     expect(() => toDocument({ ...doc, version: 99 })).toThrow("version 99");
+    expect(toDocument({ ...JSON.parse(JSON.stringify(doc)), version: 1, generatedAt: "2025-01-01T00:00:00.000Z" })).toMatchObject({ version: 2, system: { title: "How an order is paid" } });
   });
 
   test("a standalone page embeds the document where the viewer looks for it", async () => {

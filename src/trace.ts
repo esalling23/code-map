@@ -1,13 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { CallEdge, CodeMap, PathStep, StepCall, Walkthrough } from "./types";
 
+/** The most steps a walk may have before it fails. A real map never gets close; hitting it means the scope is too wide. */
+export const STEP_CAP = 2000;
+
 export interface TraceOptions {
-  maxDepth?: number;
-  maxSteps?: number;
   /** Only these symbols become steps; calls through other symbols are collapsed into `via` chains. */
   select?: string[];
   /** Longest chain of unselected symbols to look through between two selected ones. */
   maxHops?: number;
+  /** Safety cap on the number of steps (default `STEP_CAP`). Hitting it throws; the walk is never cut short. */
+  stepCap?: number;
 }
 
 const fileMatches = (file: string, part: string | undefined) => !part || file === part || file.endsWith(`/${part}`);
@@ -115,12 +118,11 @@ export function entryCandidates(map: CodeMap, limit = 10): { id: string; reach: 
 
 /**
  * Depth-first walk of the call graph in source order — the path the code takes when it runs.
- * With `select`, only selected symbols become steps; selected symbols the walk never reaches
- * start their own segments, so every selected symbol appears.
+ * It follows every reachable call in scope. With `select`, only selected symbols become steps;
+ * selected symbols the walk never reaches start their own segments, so every selected symbol appears.
  */
 export function tracePath(map: CodeMap, entryId: string | undefined, opts: TraceOptions = {}): Walkthrough {
-  const maxDepth = opts.maxDepth ?? 8;
-  const maxSteps = opts.maxSteps ?? 60;
+  const stepCap = opts.stepCap ?? STEP_CAP;
   const maxHops = opts.maxHops ?? 6;
   const selectedAll = opts.select && new Set(opts.select);
   const selectedData = opts.select?.filter((id) => map.symbols[id].kind === "data") ?? [];
@@ -151,19 +153,18 @@ export function tracePath(map: CodeMap, entryId: string | undefined, opts: Trace
 
   const steps: PathStep[] = [];
   const stepOf = new Map<string, number>();
-  let truncated = false;
 
-  const visit = (id: string, depth: number, parent?: number, callLine?: number, via: string[] = []): number | undefined => {
-    if (stepOf.has(id)) return stepOf.get(id);
-    if (steps.length >= maxSteps) {
-      truncated = true;
-      return undefined;
+  const visit = (id: string, depth: number, parent?: number, callLine?: number, via: string[] = []): number => {
+    if (stepOf.has(id)) return stepOf.get(id)!;
+    if (steps.length >= stepCap) {
+      throw new Error(`The walk passed ${stepCap} steps, the safety cap, so no map was written. Narrow the scope with include, select or entry.`);
     }
     const step: PathStep = {
       index: steps.length,
       symbolId: id,
       depth,
       parent,
+      descendants: 0,
       callLine,
       via,
       calls: [],
@@ -180,11 +181,6 @@ export function tracePath(map: CodeMap, entryId: string | undefined, opts: Trace
         seenTargets.add(hit.to);
         const call: StepCall = { to: hit.to, line: edge.line, via: hit.via, ...(hit.inferred ? { inferred: true } : {}) };
         step.calls.push(call);
-        if (depth + 1 > maxDepth) {
-          truncated = true;
-          call.step = stepOf.get(hit.to);
-          continue;
-        }
         call.step = visit(hit.to, depth + 1, step.index, edge.line, hit.via);
       }
     }
@@ -210,11 +206,15 @@ export function tracePath(map: CodeMap, entryId: string | undefined, opts: Trace
   }
 
   if (!steps.length) throw new Error("The path has no steps.");
+  // A parent always comes before its children, so one pass from the end adds up each subtree.
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const p = steps[i].parent;
+    if (p !== undefined) steps[p].descendants += steps[i].descendants + 1;
+  }
   return {
     entry: entry && isSelected(entry) ? entry : steps[0].symbolId,
     overview: "",
     steps,
-    truncated,
     ...(opts.select ? { selection: { ids: [...selected!], data: selectedData } } : {}),
   };
 }

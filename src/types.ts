@@ -71,7 +71,13 @@ export interface PathStep {
   index: number;
   symbolId: string;
   depth: number;
+  /**
+   * Index of the step that first called this one. A step reached from several callers sits
+   * under its first caller only; later callers link back to it through `StepCall.step`.
+   */
   parent?: number;
+  /** How many steps sit beneath this one in the step tree (children, their children, and so on), counted under first parents only. */
+  descendants: number;
   callLine?: number;
   via: string[];
   calls: StepCall[];
@@ -111,7 +117,8 @@ export interface Walkthrough {
   entry: string;
   overview: string;
   steps: PathStep[];
-  truncated: boolean;
+  /** Never set: the walk follows every call in scope. Old raw dumps may still carry it. */
+  truncated?: boolean;
   /** Set when the walkthrough is limited to a selection of symbols. */
   selection?: { ids: string[]; data: string[] };
   context?: SystemContext;
