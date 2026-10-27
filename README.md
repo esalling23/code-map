@@ -243,10 +243,60 @@ bun run src/cli.ts . -i src -s docs/maps/orders.selection.txt \
 - Calls inside callbacks and nested functions are counted as calls made by the enclosing named function.
 - Only the first visit to a function becomes a step. Later visits link back to it.
 
-## Releasing
+## Releasing and CI
 
-CI runs the typecheck and tests on every push. Each release also deploys the hosted viewer to GitHub Pages from the released commit, so the viewer always matches the latest version on npm. To ship a viewer fix between releases, run the **Pages** workflow by hand on `main`.
+### Workflows
 
-To publish to npm, never edit the version by hand. Run the **Publish** workflow from the Actions tab on `main` and pick `patch`, `minor` or `major` (or `gh workflow run publish.yml -f bump=minor`). It raises the version, runs the tests, publishes, deploys the viewer, then commits `chore(release): vX.Y.Z` to `main` and pushes the tag as a record. Pushing a tag yourself doesn't start a release.
+| Workflow | Starts on | What it does |
+|---|---|---|
+| **CI** (`ci.yml`) | Push to `main`, and every pull request | Type check and tests |
+| **Publish** (`publish.yml`) | Run by hand on `main` | Raises the version, runs the type check and tests, publishes to npm, then deploys the hosted viewer from the same commit |
+| **Pages** (`pages.yml`) | Run by hand on `main` | Deploys only the hosted viewer, for a viewer fix between releases |
 
-Publishing uses npm trusted publishing, so no npm token is stored in the repo. The package's settings on npmjs.com list this repo's `publish.yml` as its trusted publisher.
+The hosted viewer deploys with each release, not on every push. That way it always matches the latest version on npm, and a change on `main` can't stop it from opening maps that the released CLI writes. A viewer fix shipped with **Pages** between releases must still open those maps.
+
+### Making a release
+
+Never edit the version in `package.json` by hand. Run **Publish** from the Actions tab on `main` and pick `patch`, `minor` or `major`, or:
+
+```sh
+gh workflow run publish.yml -f bump=minor
+```
+
+The workflow:
+
+1. raises the version, and stops if that version is already on npm;
+2. runs the type check and tests;
+3. publishes to npm with a provenance statement;
+4. commits `chore(release): vX.Y.Z` to `main` and pushes the `vX.Y.Z` tag as a record;
+5. builds the viewer from the released commit and deploys it to GitHub Pages.
+
+If a step fails, nothing after it runs. A failure before step 4 leaves `main` and npm unchanged, so you can fix the cause and run it again. Pushing a tag yourself doesn't start a release.
+
+### One-time setup
+
+**npm trusted publishing.** Publish has no npm token. npm trusts the workflow itself: GitHub gives the job a short-lived identity token (OpenID Connect, OIDC), and npm accepts it because the package names this workflow as its trusted publisher. On npmjs.com, open the package's **Settings → Trusted Publisher → GitHub Actions** and enter:
+
+| Field | Value |
+|---|---|
+| Organization or user | `esalling23` (the GitHub owner, not the npm scope) |
+| Repository | `code-map` |
+| Workflow filename | `publish.yml` |
+| Environment | leave it empty; the publish job uses none |
+
+Or run this from a terminal; npm opens the browser for a two-factor check:
+
+```sh
+npm trust github @eronsalling23/code-map --file publish.yml --repo esalling23/code-map --allow-publish
+npm trust list @eronsalling23/code-map    # check it
+```
+
+The entry belongs to one package name. Renaming the package, or the workflow file, means adding it again. Trusted publishing needs npm 11.5.1 or later, which the workflow installs.
+
+**GitHub Pages.** In the repo's **Settings → Pages**, the source is **GitHub Actions**. The `github-pages` environment only allows deployments from `main`. Both workflows that deploy run on `main`, so it needs no change.
+
+### Troubleshooting Publish
+
+- **`npm error 404 Not Found - PUT https://registry.npmjs.org/@eronsalling23%2fcode-map`** after the tests pass: npm found no trusted publisher that matches this run. Check the entry above, especially the owner and the workflow filename, then run Publish again.
+- **"X.Y.Z is already on npm":** that version exists. Pick a larger bump.
+- **The deploy step is rejected by the environment:** the run wasn't on `main`. Start it from `main`.
