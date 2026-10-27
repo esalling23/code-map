@@ -1,5 +1,6 @@
-# Publishes to npm. Run it by hand (Actions → Publish → Run workflow) on main with a bump: it sets the next
-# version, publishes, then commits the version to main and pushes the vX.Y.Z tag as a record.
+# Publishes to npm. Run it by hand (Actions → Publish → Run workflow) on main with a bump. It commits the next
+# version and tags it, publishes only if that commit succeeded, and pushes the commit and the vX.Y.Z tag to
+# main only if npm accepted the package. A failure at any point leaves main and npm as they were.
 # It uses npm trusted publishing (OIDC), so no token is stored: the package's settings on npmjs.com name this
 # repo and workflow. npm's own CLI publishes because trusted publishing needs it (npm 11.5.1 or later).
 # After publishing it deploys the hosted viewer from the same commit, so the viewer always matches the latest
@@ -56,22 +57,26 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Remember the released source
-        id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run test
-      - run: npm publish
 
-      - name: Record the version on main
+      # Local only until npm accepts the package.
+      - name: Commit and tag the version
+        id: source
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           git commit -am "chore(release): v$VERSION"
           git tag "v$VERSION"
-          git push origin HEAD:main "v$VERSION"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - run: npm publish
+
+      - name: Push the release to main
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: git push --atomic origin HEAD:main "v$VERSION"
 
   viewer:
     needs: publish

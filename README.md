@@ -265,13 +265,14 @@ gh workflow run publish.yml -f bump=minor
 
 The workflow:
 
-1. raises the version, and stops if that version is already on npm;
+1. sets the next version in `package.json`, and stops if that version is already on npm;
 2. runs the type check and tests;
-3. publishes to npm with a provenance statement;
-4. commits `chore(release): vX.Y.Z` to `main` and pushes the `vX.Y.Z` tag as a record;
-5. builds the viewer from the released commit and deploys it to GitHub Pages.
+3. commits `chore(release): vX.Y.Z` and tags it `vX.Y.Z`, in the job's copy of the repo only;
+4. publishes to npm with a provenance statement, only if that commit succeeded;
+5. pushes the commit and the tag to `main` together, only if npm accepted the package;
+6. builds the viewer from the release commit and deploys it to GitHub Pages.
 
-If a step fails, nothing after it runs. A failure before step 4 leaves `main` and npm unchanged, so you can fix the cause and run it again. Pushing a tag yourself doesn't start a release.
+If a step fails, nothing after it runs. Nothing leaves the job until step 4, so a failure before that leaves npm and `main` unchanged; fix the cause and run it again. The one gap is a failed push after a successful publish, for example when `main` moved during the run. Then npm has the version but `main` doesn't: pull, set `package.json` to that version, commit `chore(release): vX.Y.Z`, tag it and push both. Pushing a tag yourself doesn't start a release.
 
 ### One-time setup
 
