@@ -8,7 +8,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { applyDescriptions, buildTemplate, readDescriptions } from "./authored";
 import { checkDescriptions, formatProblems } from "./check";
-import { buildDocument, FORMAT, type CodeMapDocument } from "./pagedata";
+import { buildDocument, FORMAT, toDocument } from "./pagedata";
 import { listSymbols, loadMap, walkMap, writeOutputs } from "./pipeline";
 import { entryCandidates, readSelectionSpecs } from "./trace";
 
@@ -19,7 +19,7 @@ const INSTRUCTIONS = `code-map maps how code runs: the functions on one path thr
 
 To understand a system that already has a map, call read_map on its JSON.
 
-To make a map: (1) decide the repos, sub-paths and an entry or selection (list_entries, list_symbols); (2) trace with a templatePath and aim for 8–40 steps; (3) read the code for every step; (4) write the descriptions into the template in short, plain English for engineers new to this code, explaining every project name; (5) check_descriptions, then build. Call guide("workflow") before your first map, and guide("writing") before writing descriptions. Pass absolute paths.`;
+To make a map: (1) decide the repos, sub-paths and an entry or selection (list_entries, list_symbols); (2) trace with a templatePath: the map covers everything reachable in that scope, so to focus it narrow include, select or entry, never drop steps; (3) read the code for every step; (4) write the descriptions into the template in short, plain English for engineers new to this code, explaining every project name; (5) check_descriptions, then build. Call guide("workflow") before your first map, and guide("writing") before writing descriptions. Pass absolute paths.`;
 
 const source = {
   dirs: z.array(z.string()).min(1).describe("Absolute paths of the repo folders; several are analyzed as one system"),
@@ -29,12 +29,10 @@ const source = {
 const walkArgs = {
   entry: z.string().optional().describe('Where the path starts: "src/server.ts#handle", "Server.handle", "handle", or a file path. Default: the uncalled function that reaches the most code'),
   select: z.array(z.string()).optional().describe('Map only these symbols: specs ("file#name", "Class.method", globs like "Service.*"), selection file paths, or comma-separated lists'),
-  maxDepth: z.number().int().positive().optional().describe("Deepest call nesting to follow (default 8)"),
-  maxSteps: z.number().int().positive().optional().describe("Most steps in the walkthrough (default 60)"),
-  maxHops: z.number().int().positive().optional().describe("With select: longest chain of unselected functions to look through (default 6)"),
+  maxHops: z.number().int().positive().optional().describe("With select: longest chain of unselected functions to look through (default 6). Part of the scope"),
 };
 
-type WalkInput = { dirs: string[]; include?: string[]; tests?: boolean; entry?: string; select?: string[]; maxDepth?: number; maxSteps?: number; maxHops?: number };
+type WalkInput = { dirs: string[]; include?: string[]; tests?: boolean; entry?: string; select?: string[]; maxHops?: number };
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 const json = (v: unknown) => text(JSON.stringify(v, null, 2));
@@ -56,8 +54,6 @@ function cliArgs(a: WalkInput & { descriptionsPath?: string; title?: string }, o
   if (a.tests) args.push("--tests");
   if (a.entry) args.push("-e", a.entry);
   for (const s of a.select ?? []) args.push("-s", s);
-  if (a.maxDepth) args.push("--max-depth", String(a.maxDepth));
-  if (a.maxSteps) args.push("--max-steps", String(a.maxSteps));
   if (a.maxHops) args.push("--max-hops", String(a.maxHops));
   if (a.descriptionsPath) args.push("--descriptions", a.descriptionsPath);
   if (a.title) args.push("--title", a.title);
@@ -104,7 +100,7 @@ server.registerTool(
   "trace",
   {
     description:
-      "Trace the path and produce the fill-in template: every step and area with the facts needed to describe it, a generated draft, and an empty description. With templatePath the template is written there and only a summary comes back; otherwise it comes back inline. Aim for 8–40 steps.",
+      "Trace the path and produce the fill-in template: every step and area with the facts needed to describe it, a generated draft, and an empty description. With templatePath the template is written there and only a summary comes back; otherwise it comes back inline. The walk follows every call reachable in the scope (dirs, include, tests, entry, select); the summary gives the step count and the steps with the most steps beneath them. To focus the map, narrow the scope; never drop steps.",
     inputSchema: {
       ...source,
       ...walkArgs,
@@ -123,12 +119,17 @@ server.registerTool(
     const template = buildTemplate(map, w);
     const summary = {
       steps: w.steps.length,
-      truncated: w.truncated,
       files: new Set(w.steps.map((s) => map.symbols[s.symbolId].file)).size,
       areas: template.areas.map((x) => x.name),
       notes,
       warnings,
-      advice: w.truncated || w.steps.length > 40 ? "Too wide: trim the selection or lower maxDepth." : w.steps.length < 8 ? "Narrow: widen the selection or raise maxDepth." : "Good size.",
+      largest: [...w.steps]
+        .sort((x, y) => y.descendants - x.descendants || x.index - y.index)
+        .slice(0, 5)
+        .filter((s) => s.descendants > 0)
+        .map((s) => `${s.index + 1}. ${map.symbols[s.symbolId].name} (${s.descendants} step${s.descendants === 1 ? "" : "s"} beneath)`),
+      advice:
+        "The map covers everything reachable in this scope. If it covers code you did not mean to map, narrow include, select or entry and trace again; never drop steps. People hide small helpers with the viewer's level filter.",
     };
     if (!a.templatePath) return json({ ...summary, template });
     writeFileSync(a.templatePath, JSON.stringify(template, null, 2));
@@ -178,15 +179,16 @@ server.registerTool(
   "read_map",
   {
     description:
-      "Read an existing code map's system section: what the code does, where it sits, its areas, every step (file, lines, description, calls, data) and the links between services. Use it to understand a mapped system without reading its source.",
+      "Read an existing code map's system section: what the code does, where it sits, its areas, every step (file, lines, description, calls, data, parent step and how many steps sit beneath it) and the links between services. Use it to understand a mapped system without reading its source.",
     inputSchema: {
       path: z.string().describe("A code-map JSON file"),
       steps: z.boolean().optional().describe("Include every step (default true); false returns the summary, areas and links only"),
     },
   },
   safe(({ path, steps }) => {
-    const doc = JSON.parse(readFileSync(path, "utf8")) as CodeMapDocument;
-    if (doc.format !== FORMAT) throw new Error(`${path} isn't a code-map document.`);
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    if (raw?.format !== FORMAT) throw new Error(`${path} isn't a code-map document.`);
+    const doc = toDocument(raw);
     const { steps: all, ...rest } = doc.system;
     return json(steps === false ? { ...rest, stepCount: all.length } : doc.system);
   }),

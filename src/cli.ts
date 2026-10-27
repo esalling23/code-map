@@ -36,8 +36,9 @@ Options:
                          walkthrough as JSON
   -i, --include <path>   Only analyze this sub-path of <dir> (repeatable)
       --tests            Include *.test.* / *.spec.* files
-      --max-depth <n>    Deepest call nesting to follow (default: 8)
-      --max-steps <n>    Most steps in the walkthrough (default: 60)
+
+  The map follows every call reachable from the entry or selection, within the analyzed
+  files. To focus it, narrow the scope with -i, -s or -e. A walk over 2000 steps fails.
       --max-hops <n>     With --select: longest chain of unselected functions to look
                          through between two selected ones (default: 6)
       --list-entries     Print likely entry points and exit
@@ -64,6 +65,9 @@ async function main() {
     if (!path) throw new Error("Usage: code-map check <descriptions.json>");
     return console.log(formatProblems(checkDescriptions(JSON.parse(readFileSync(path, "utf8")))));
   }
+  if (process.argv.slice(2).some((a) => /^--max-(depth|steps)(=|$)/.test(a))) {
+    throw new Error("--max-steps and --max-depth were removed: the walk is now complete. To make the map smaller, narrow the scope with --include, --select or --entry.");
+  }
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
@@ -74,8 +78,6 @@ async function main() {
       select: { type: "string", short: "s", multiple: true },
       "max-hops": { type: "string", default: "6" },
       tests: { type: "boolean", default: false },
-      "max-depth": { type: "string", default: "8" },
-      "max-steps": { type: "string", default: "60" },
       "list-entries": { type: "boolean", default: false },
       list: { type: "string", multiple: true },
       template: { type: "string" },
@@ -117,8 +119,6 @@ async function main() {
   let { walk, notes } = walkMap(map, {
     entry: values.entry,
     select: values.select?.length ? readSelectionSpecs(values.select) : undefined,
-    maxDepth: Number(values["max-depth"]),
-    maxSteps: Number(values["max-steps"]),
     maxHops: Number(values["max-hops"]),
   });
   for (const n of notes) console.error(n);
@@ -146,7 +146,7 @@ async function main() {
 
   const doc = buildDocument(map, walk, { title, args: process.argv.slice(2) });
   for (const out of await writeOutputs(doc, values.out?.length ? values.out : ["code-map.json"])) {
-    console.error(`Wrote ${out} (${walk.steps.length} steps${walk.truncated ? ", truncated" : ""})`);
+    console.error(`Wrote ${out} (${walk.steps.length} steps)`);
   }
   if (values.raw) {
     writeFileSync(values.raw, JSON.stringify({ map, walkthrough: walk }, null, 2));

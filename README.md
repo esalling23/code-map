@@ -11,7 +11,7 @@ The viewer shows
 
 0. **What you're looking at.** What the code does overall and where it sits in the system, from the repo's README and package description. Then the *areas* the path runs through, in order (e.g. `deploy → gcs → client`). Each area quotes what the repo's own docs say about it and names the source. The hand-offs between areas are listed under that.
 1. **A system diagram.** The *Call path* tab shows every function and method on an execution path, numbered by step and grouped into boxes per file. Data types (interfaces, type aliases, enums, classes) appear as cylinders. Solid arrows are calls. Dotted arrows show data a step takes (`param`), `returns`, `creates` or `uses`. The *Files* tab shows how the files on the path import each other.
-2. **A walkthrough.** The path the code takes when it runs: a depth-first walk of the call graph from the entry point, in source order. Each step puts a plain-language description beside the code for that step. The call lines that lead to the next steps are highlighted and linked, and long functions are cut down to the signature plus the lines around those calls.
+2. **A walkthrough.** The path the code takes when it runs: a depth-first walk of the call graph from the entry point, in source order. It follows every call it can reach within the scope you choose, so the map is complete and the same code gives the same file. Each step puts a plain-language description beside the code for that step. The call lines that lead to the next steps are highlighted and linked, and long functions are cut down to the signature plus the lines around those calls.
 3. **Tabs beside each step.** *Code* is the excerpt above. *Data* has one sub-tab per type the step takes, returns, creates or uses, showing its definition. *Calls* has one sub-tab per function it calls, showing a preview with a link to its step. *Full source* appears when the excerpt is cut. Clicking a data chip or a call name in the description opens the matching tab.
 4. **A data section.** Every data type the path touches, as a list on the left and the definition on the right, with links back to the steps that use it.
 
@@ -79,8 +79,9 @@ ANTHROPIC_API_KEY=... bun run src/cli.ts ./my-app -e handleRequest --llm
 | `--strict` | With `--descriptions`: exit 1 on any warning, e.g. a step with no written description (for CI) |
 | `-i, --include` | Analyze only this sub-path (repeatable) |
 | `--tests` | Include `*.test.*` / `*.spec.*` files |
-| `--max-depth`, `--max-steps` | Limits for the walk (defaults: 8 and 60) |
 | `--max-hops` | With `--select`: the most unselected functions to look through between two selected ones (default 6) |
+
+The walk follows every call reachable from the entry or selection inside the analyzed files. It never drops steps. To focus a map, narrow the scope: `-i` for fewer folders, `-s` for an exact set of functions, or `-e` for a later starting point. In the viewer, people hide small helpers with the level filter. A walk over 2000 steps fails with an error rather than writing part of a map; narrow the scope and run it again.
 | `--list <spec>` | Print what a spec or glob matches, with caller and callee counts, then exit |
 | `--template <file>` | Also write a fill-in JSON with every step and area: facts, the generated draft, and an empty `description` |
 | `--descriptions <file>` | Use a filled-in template's `title`, `summary`, `role`, `overview`, area and step descriptions, and `links` in place of generated text |
@@ -132,19 +133,22 @@ The MCP server runs the same loop for any agent (see below). The `code-map` Clau
 
 ```jsonc
 {
-  "format": "code-map", "version": 1, "generatedAt": "…",
+  "format": "code-map", "version": 2,
   "generator": { "args": ["../game-manager", "-i", "src", "-e", "…"] },   // the CLI command that rebuilds it
   "system": {          // for agents: read this, stop before "render"
     "title", "summary", "role", "overview", "entry", "repos",
     "areas":  [{ "id", "name", "description", "doc", "docSource", "steps": [1, 2] }],
     "steps":  [{ "step", "id", "name", "kind", "file": "src/x.ts:12-40", "area", "signature",
-                 "description", "calledBy", "calls": [{ "id", "name", "step" }], "data": [{ "id", "name", "relation" }],
+                 "description", "calledBy", "parent", "descendants",
+                 "calls": [{ "id", "name", "step" }], "data": [{ "id", "name", "relation" }],
                  "outsideCalls", "docComment" }],
-    "data", "links", "handoffs", "truncated"
+    "data", "links", "handoffs"
   },
   "render": { … }     // for the viewer: the walkthrough, the source of every symbol shown, diagram sources
 }
 ```
+
+The file has no timestamp, so two builds from the same code and arguments are byte-identical. Each step's `parent` is the step number (from 1) of the step that first called it; `descendants` counts every step beneath it, at all levels. A step reached from several callers counts under its first caller only. The viewer still opens version-1 files and raw `--raw` dumps.
 
 ## Viewer
 
@@ -162,13 +166,13 @@ One page (`src/viewer/`) draws any code-map document:
 claude mcp add code-map -- bun run /path/to/code-map/src/mcp.ts
 ```
 
-Its instructions tell the agent the workflow: pick the code, trace, read every step's code, write the descriptions in plain English, check, build. Tools are stateless and take the same options as the CLI (`dirs`, `include`, `entry`, `select`, `maxDepth`, …) each call:
+Its instructions tell the agent the workflow: pick the code, trace, read every step's code, write the descriptions in plain English, check, build. Tools are stateless and take the same options as the CLI (`dirs`, `include`, `tests`, `entry`, `select`, `maxHops`) each call:
 
 | Tool | |
 |---|---|
 | `guide` | The workflow, the writing rules, and how to find the code for a named system (`docs/agents/`; also served as `code-map://guide/<name>` resources) |
 | `list_entries`, `list_symbols` | Ranked entry points; what specs and globs match |
-| `trace` | Runs the walk and writes the fill-in template (or returns it inline); reports the step count |
+| `trace` | Runs the walk and writes the fill-in template (or returns it inline); reports the step count and the steps with the most steps beneath them |
 | `check_descriptions` | The plain-English checker |
 | `build` | Writes `.json` / `.html`; returns warnings and the map's outline. `generator.args` in the file is the equivalent CLI command |
 | `read_map` | The `system` section of an existing map, for agents learning a system |

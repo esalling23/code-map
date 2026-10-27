@@ -30,6 +30,7 @@ test("trace → write descriptions → check → build → read_map", async () =
   const traced = JSON.parse((await call("trace", { dirs: [areas], entry: "Orders.place", templatePath })).text);
   expect(traced.steps).toBe(3);
   expect(traced.stepNames).toEqual(["1. Orders.place", "2. charge", "3. audit"]);
+  expect(traced.largest).toEqual(["1. Orders.place (2 steps beneath)", "2. charge (1 step beneath)"]);
 
   const template = JSON.parse(readFileSync(templatePath, "utf8"));
   template.title = "How an order is paid";
@@ -47,6 +48,7 @@ test("trace → write descriptions → check → build → read_map", async () =
   const read = JSON.parse((await call("read_map", { path: out, steps: false })).text);
   expect(read).toMatchObject({ title: "How an order is paid", stepCount: 3 });
   expect(read.steps).toBeUndefined();
+  expect(JSON.parse((await call("read_map", { path: out })).text).steps[0]).toMatchObject({ step: 1, descendants: 2 });
 });
 
 test("errors come back as tool results", async () => {

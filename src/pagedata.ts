@@ -6,7 +6,7 @@ import { mmd, shortPath } from "./page";
 import type { CodeMap, CodeSymbol, DataRelation, PathStep, RepoRoot, Walkthrough } from "./types";
 
 export const FORMAT = "code-map";
-export const VERSION = 1;
+export const VERSION = 2;
 
 /** One step in words, for agents. */
 export interface SystemStep {
@@ -20,6 +20,10 @@ export interface SystemStep {
   signature: string;
   description: string;
   calledBy: string;
+  /** Step number (1-based) of the step that first called this one. A step reached from several callers sits under its first caller only. */
+  parent?: number;
+  /** How many steps sit beneath this one in the step tree (all levels, not only direct calls), counted under first callers only. */
+  descendants: number;
   calls: { id: string; name: string; step?: number; via?: string[] }[];
   data: { id: string; name: string; relation: DataRelation }[];
   outsideCalls: string[];
@@ -41,7 +45,6 @@ export interface SystemSummary {
   links: { from: number; to: number; label: string }[];
   /** Where the path crosses from one area into another, by step number. */
   handoffs: { from: string; to: string; fromStep: number; step: number }[];
-  truncated: boolean;
 }
 
 export interface NodeInfo {
@@ -68,7 +71,6 @@ export interface RenderData {
 export interface CodeMapDocument {
   format: typeof FORMAT;
   version: typeof VERSION;
-  generatedAt: string;
   /** The command line (or MCP call) that made this file, to regenerate it. */
   generator?: { args: string[] };
   system: SystemSummary;
@@ -87,6 +89,8 @@ export function stepFacts(map: Pick<CodeMap, "symbols">, walk: Walkthrough, s: P
     area: walk.context?.areaOfStep[s.index],
     signature: sym.signature,
     calledBy: s.parent !== undefined ? `step ${s.parent + 1} (${name(walk.steps[s.parent].symbolId)}), line ${s.callLine}` : s.via.length ? `reached by way of ${s.via.map(name).join(" → ")}` : "nothing on this path",
+    ...(s.parent !== undefined && { parent: s.parent + 1 }),
+    descendants: s.descendants,
     calls: s.calls.map((c) => `${name(c.to)}${c.step !== undefined ? ` (step ${c.step + 1})` : ""}${c.via.length ? ` via ${c.via.map(name).join(" → ")}` : ""}`),
     data: s.dataUsed.map((d) => `${name(d.id)} (${d.relation})`),
     outsideCalls: [...new Set(sym.externalCalls.map((c) => c.text))].slice(0, 12),
@@ -124,7 +128,6 @@ function systemSummary(m: Model, title: string): SystemSummary {
     }),
     links: (walk.links ?? []).map((l) => ({ from: l.from + 1, to: l.to + 1, label: l.label })),
     handoffs: (ctx?.handoffs ?? []).map((h) => ({ ...h, fromStep: h.fromStep + 1, step: h.step + 1 })),
-    truncated: walk.truncated,
   };
 }
 
@@ -148,7 +151,6 @@ export function buildDocument(map: CodeMap, walk: Walkthrough, opts: { title?: s
   return {
     format: FORMAT,
     version: VERSION,
-    generatedAt: new Date().toISOString(),
     ...(opts.args && { generator: { args: opts.args } }),
     system: systemSummary(m, title),
     render: {
@@ -162,14 +164,40 @@ export function buildDocument(map: CodeMap, walk: Walkthrough, opts: { title?: s
   };
 }
 
-/** A document from parsed JSON: a code-map document as written, or a raw `{ map, walkthrough }` dump (`--raw`). */
+/** Fills in `descendants` on steps written before it existed. A parent always comes before its children. */
+function withLevels(walk: Walkthrough): Walkthrough {
+  if (walk.steps.every((s) => typeof s.descendants === "number")) return walk;
+  const steps = walk.steps.map((s) => ({ ...s, descendants: 0 }));
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const p = steps[i].parent;
+    if (p !== undefined) steps[p].descendants += steps[i].descendants + 1;
+  }
+  return { ...walk, steps };
+}
+
+/** A version-1 document as version 2: no `generatedAt` or `truncated`, and the step levels added. */
+function upgradeV1(v1: CodeMapDocument & { generatedAt?: string; system: { truncated?: boolean } }): CodeMapDocument {
+  const { generatedAt: _, ...doc } = v1;
+  const { truncated: __, ...system } = doc.system;
+  const { truncated: ___, ...walk } = withLevels(doc.render.walkthrough);
+  const levels = (s: PathStep) => ({ ...(s.parent !== undefined && { parent: s.parent + 1 }), descendants: s.descendants });
+  return {
+    ...doc,
+    version: VERSION,
+    system: { ...system, steps: system.steps.map((s, i) => ({ ...s, ...levels(walk.steps[i]) })) },
+    render: { ...doc.render, walkthrough: walk },
+  };
+}
+
+/** A document from parsed JSON: a code-map document as written (this version or 1), or a raw `{ map, walkthrough }` dump (`--raw`). */
 export function toDocument(value: unknown): CodeMapDocument {
-  const v = value as Partial<CodeMapDocument> & { map?: CodeMap; walkthrough?: Walkthrough };
+  const v = value as Omit<Partial<CodeMapDocument>, "version"> & { version?: number; map?: CodeMap; walkthrough?: Walkthrough };
   if (v?.format === FORMAT) {
-    if (v.version !== VERSION) throw new Error(`This file is code-map format version ${v.version}; this viewer reads version ${VERSION}.`);
+    if (v.version === 1) return upgradeV1(v as unknown as Parameters<typeof upgradeV1>[0]);
+    if (v.version !== VERSION) throw new Error(`This file is code-map format version ${v.version}; this viewer reads versions 1 and ${VERSION}.`);
     return v as CodeMapDocument;
   }
-  if (v?.map?.symbols && v.walkthrough?.steps) return buildDocument(v.map, v.walkthrough);
+  if (v?.map?.symbols && v.walkthrough?.steps) return buildDocument(v.map, withLevels(v.walkthrough));
   throw new Error("This isn't a code-map file. Make one with the code-map CLI (-o map.json) or its MCP server.");
 }
 

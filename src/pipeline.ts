@@ -18,8 +18,7 @@ export interface WalkOptions {
   entry?: string;
   /** Specs already read from files or inline lists (see `readSelectionSpecs`). */
   select?: string[];
-  maxDepth?: number;
-  maxSteps?: number;
+  /** With `select`: longest chain of unselected symbols to look through. Part of the scope, not a trim. */
   maxHops?: number;
 }
 
@@ -42,7 +41,7 @@ export function listSymbols(map: CodeMap, specs: string[]) {
   });
 }
 
-/** Traces the path and writes the generated descriptions. `notes` says what was chosen on the caller's behalf. */
+/** Traces every reachable call in scope and writes the generated descriptions. `notes` says what was chosen on the caller's behalf. */
 export function walkMap(map: CodeMap, o: WalkOptions): { walk: Walkthrough; notes: string[] } {
   const notes: string[] = [];
   const select = o.select?.length ? resolveSelection(map, o.select) : undefined;
@@ -56,7 +55,7 @@ export function walkMap(map: CodeMap, o: WalkOptions): { walk: Walkthrough; note
     entry = best.id;
     notes.push(`No entry given; starting at ${entry} (reaches ${best.reach} symbols).`);
   }
-  const walk = describeHeuristic(map, tracePath(map, entry, { maxDepth: o.maxDepth ?? 8, maxSteps: o.maxSteps ?? 60, maxHops: o.maxHops ?? 6, select }));
+  const walk = describeHeuristic(map, tracePath(map, entry, { maxHops: o.maxHops ?? 6, select }));
   return { walk, notes };
 }
 
