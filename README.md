@@ -5,7 +5,22 @@ Generates a **code-map** for a TypeScript/JavaScript codebase: a JSON document t
 - **Agents** read the document's `system` section: a plain-language sitemap of the code (summary, areas, every step with its file, lines, description, calls and data, and the links between services). CI can rebuild it to keep system docs current.
 - **People** open the same file in the **viewer**, which draws it as one page.
 
-Make maps with the CLI or the MCP server (`code-map-mcp`); both write the same file. Open them in the hosted viewer (file upload, with recent files kept in your browser), locally with `code-map view`, or as a standalone `.html`.
+Make maps with the CLI or the MCP server (`code-map-mcp`); both write the same file. Open them in the [hosted viewer](https://esalling23.github.io/code-map/) (file upload, with recent files kept in your browser), locally with `code-map view`, or as a standalone `.html`.
+
+## Install
+
+code-map runs on [Bun](https://bun.sh) (1.1 or later); it is TypeScript run directly, with no build step.
+
+```sh
+# The MCP server, for Claude Code in every project
+claude mcp add --scope user code-map -- bunx --package @esalling23/code-map code-map-mcp
+
+# The CLI, without installing
+bunx @esalling23/code-map <repo> -e <entry> -o map.json
+
+# Or install both commands (code-map, code-map-mcp)
+bun add -g @esalling23/code-map
+```
 
 The viewer shows
 
@@ -22,7 +37,9 @@ The call path has three more controls:
 - **Full path** highlights the route the walkthrough takes: each step's box and the arrow that leads into it, from step 1 to the last. Everything else fades. It works in both modes.
 - **◀ / ▶** (or the ← / → keys) step through the functions and methods in walkthrough order. Each move highlights the arrow into the new step, keeps the arrows walked so far highlighted, and glides the view along that arrow until the box is centred. Click the step's name to read it in the walkthrough; × or Esc stops. While stepping, a panel beside the diagram shows the step's description, signature and calls, the same text as in the walkthrough; its "step N" links move the navigator there. **Details** or the panel's × hides it, and the page remembers that choice. The view centres each box in the space the panel leaves free.
 
-**Levels.** A map keeps every step, so a big one can be long. The control under the title ("Show steps with at least N steps beneath them": All, 1+, 3+, 5+, 10+) hides helper steps that have fewer than N steps beneath them, using each step's `descendants`. The entry and other starting points always show, and so does every step above a shown one. Step numbers stay the same, so a gap in the numbering means hidden steps. In the walkthrough, a step with hidden helpers has a "N helper steps hidden" button; in the call path, a dashed "N hidden" box. Either one shows that group. The viewer remembers the setting.
+**The bar.** A bar stays at the top of a map with its title, links to its sections (Overview, Map, Code, Data) and the levels control. In the hosted viewer, ← goes back to your recent files; open another file from there.
+
+**Levels.** A map keeps every step, so a big one can be long. The **Steps** control in the bar (All, 1+, 3+, 5+, 10+, with the count shown, e.g. 14/73; hover it for an explanation) hides helper steps that have fewer than N steps beneath them, using each step's `descendants`. The entry and other starting points always show, and so does every step above a shown one. Step numbers stay the same, so a gap in the numbering means hidden steps. In the walkthrough, a step with hidden helpers has a "N helper steps hidden" button; in the call path, a dashed "N hidden" box. Either one shows that group. The viewer remembers the setting.
 
 Each tab's content is built the first time the tab opens, so a type shown in ten steps doesn't make the page ten times bigger.
 
@@ -130,7 +147,7 @@ bun run src/cli.ts ../game-manager -i src -e PromoteGameHandler.execute -o promo
 
 Steps are matched by function id, so the file still applies after the code changes, as long as those functions still exist. `links` adds connections the analysis can't see, such as an HTTP request between two services or a file one writes and another reads: `{"from": 3, "to": 12, "label": "uploads bundle → CDN"}`. They are drawn as dashed arrows and listed under "Connections outside the code". Any step, area or link that doesn't match prints a warning.
 
-The MCP server runs the same loop for any agent (see below). The `code-map` Claude Code skill (`~/.claude/skills/code-map`) runs this whole loop. It picks the code (from paths, or from a system name like "dynamic data across game-manager and game-sdk"), reads it, and writes the descriptions in plain English.
+The MCP server runs this whole loop for any agent (see below). Its instructions and `guide` tool tell the agent how to pick the code (from paths, or from a system name like "dynamic data across game-manager and game-sdk"), read it, and write the descriptions in plain English.
 
 ## The code-map document
 
@@ -163,10 +180,12 @@ One page (`src/viewer/`, a React app) draws any code-map document. Bun bundles i
 
 ## MCP server
 
-`code-map-mcp` (`bun run src/mcp.ts`) speaks MCP over stdio. Add it to Claude Code with:
+`code-map-mcp` speaks MCP over stdio. Add it to Claude Code with:
 
 ```sh
-claude mcp add code-map -- bun run /path/to/code-map/src/mcp.ts
+claude mcp add --scope user code-map -- bunx --package @esalling23/code-map code-map-mcp
+# or, from a clone of this repo
+claude mcp add --scope user code-map -- bun run /path/to/code-map/src/mcp.ts
 ```
 
 Its instructions tell the agent the workflow: pick the code, trace, read every step's code, write the descriptions in plain English, check, build. Tools are stateless and take the same options as the CLI (`dirs`, `include`, `tests`, `entry`, `select`, `maxHops`) each call:
@@ -212,3 +231,9 @@ bun run src/cli.ts . -i src -s docs/maps/orders.selection.txt \
 - Calls are resolved statically. Calls through interfaces, dependency injection tokens, event buses or dynamic dispatch stop at the declaration the type checker finds. Those show up as outside code or as the interface method, not as the implementation.
 - Calls inside callbacks and nested functions are counted as calls made by the enclosing named function.
 - Only the first visit to a function becomes a step. Later visits link back to it.
+
+## Releasing
+
+CI runs the typecheck and tests on every push. Pushing to `main` also deploys the hosted viewer to GitHub Pages.
+
+To publish to npm, bump `version` in `package.json`, commit, then push a matching tag: `git tag v0.2.0 && git push origin v0.2.0`. The `Publish` workflow checks that the tag matches the version, runs the tests and publishes with npm trusted publishing, so no npm token is stored in the repo. The package's settings on npmjs.com must list this repo's `publish.yml` as a trusted publisher (set once, after the first publish).
