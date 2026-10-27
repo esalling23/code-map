@@ -97,7 +97,7 @@ export function Diagrams({ view }: { view: PathView }) {
   const pathShown = tab === "path";
   return (
     <>
-      <h2>System diagram</h2>
+      <h2 id="diagram">System diagram</h2>
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={pathShown} data-tab="path" onClick={() => setTab("path")}>
           Call path

@@ -27,7 +27,7 @@ export function Walkthrough() {
 
   return (
     <>
-      <h2>Walkthrough</h2>
+      <h2 id="walkthrough">Walkthrough</h2>
       <p className="muted">
         The path the code takes when it runs, in order. Highlighted lines are the calls that lead to the next steps; the → buttons on them jump there. Use the tabs beside each step to see the data it uses and preview the code it calls.
       </p>

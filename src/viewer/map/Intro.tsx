@@ -22,7 +22,7 @@ export function Intro() {
   const links = walk.links ?? [];
 
   return (
-    <section className="intro">
+    <section className="intro" id="overview">
       <div className="introgrid">
         <div className="card lead">
           <div className="eyebrow">What this code does</div>
@@ -40,7 +40,7 @@ export function Intro() {
           </p>
         </div>
       </div>
-      <h2>Areas on this path</h2>
+      <h2 id="areas">Areas on this path</h2>
       <p className="muted">The parts of the system the code passes through, in the order it reaches them. Quoted text is what the repo's own docs say about each area.</p>
       <ol className="areas">
         {ctx.areas.map((a, i) => (

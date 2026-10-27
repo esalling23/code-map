@@ -25,19 +25,22 @@ export function useLevel(): [number, (n: number) => void] {
   return [level, set];
 }
 
+const HELP =
+  "Hide helper steps: show only steps with at least this many steps beneath them (counting every level below). " +
+  "Step numbers stay the same, and a shown step's \"N hidden\" button brings its helpers back.";
+
 export function LevelControl({ level, onChange, shown, total }: { level: number; onChange: (n: number) => void; shown: number; total: number }) {
   return (
-    <label className="levels" title="Hide helper steps that have few steps beneath them. Step numbers stay the same.">
-      Show steps with at least{" "}
-      <select value={level} onChange={(e) => onChange(Number(e.target.value))}>
+    <label className="levels" title={HELP}>
+      Steps
+      <select value={level} onChange={(e) => onChange(Number(e.target.value))} aria-label="Minimum steps beneath a shown step">
         {LEVELS.map((n) => (
           <option key={n} value={n}>
             {n ? `${n}+` : "All"}
           </option>
         ))}
-      </select>{" "}
-      steps beneath them
-      {shown < total && <span className="muted">{` · showing ${shown} of ${total}`}</span>}
+      </select>
+      <span className="muted" aria-label={`showing ${shown} of ${total} steps`}>{`${shown}/${total}`}</span>
     </label>
   );
 }

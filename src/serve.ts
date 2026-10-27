@@ -35,7 +35,7 @@ export async function view(argv: string[]) {
     hostname: "127.0.0.1",
     fetch(req) {
       const path = new URL(req.url).pathname;
-      if (path === "/" || path === "/index.html") return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+      if (path === "/" || path === "/index.html") return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       if (route && path === route) return new Response(readFileSync(file!), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
       return new Response("Not found", { status: 404 });
     },

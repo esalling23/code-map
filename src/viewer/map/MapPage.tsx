@@ -1,4 +1,4 @@
-// A whole map: header with the levels control, intro, diagrams, walkthrough and data.
+// A whole map: the sticky bar with the title and levels control, then the header, intro, diagrams, walkthrough and data.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { dataIdsOf } from "../../model";
 import { pathView, type CodeMapDocument } from "../../pagedata";
@@ -7,9 +7,10 @@ import { LevelControl, useLevel } from "../levels/LevelControl";
 import { hiddenGroups, stepLevels, visibleSteps } from "../levels/levels";
 import { MapProvider, type MapState } from "./context";
 import { Intro } from "./Intro";
+import { MapBar, type MapNav, type MapSection } from "./MapBar";
 import { DataSection, Walkthrough } from "./Walkthrough";
 
-export function MapPage({ doc }: { doc: CodeMapDocument }) {
+export function MapPage({ doc, nav }: { doc: CodeMapDocument; nav?: MapNav }) {
   const d = doc.render;
   const walk = d.walkthrough;
   const [level, setLevel] = useLevel();
@@ -57,30 +58,39 @@ export function MapPage({ doc }: { doc: CodeMapDocument }) {
     target,
   };
 
+  const dataCount = dataIdsOf(walk).length;
+  const sections: MapSection[] = [
+    { id: "overview", label: "Overview" },
+    { id: "diagram", label: "Map" },
+    { id: "walkthrough", label: "Code" },
+    ...(dataCount ? [{ id: "data", label: "Data" }] : []),
+  ];
   const files = new Set(walk.steps.map((s) => d.symbols[s.symbolId].file));
   const rootsText = d.roots.map((r) => (r.label ? `${r.label}: ${r.dir}` : r.dir)).join(" · ");
   return (
     <MapProvider value={state}>
+      <MapBar title={doc.system.title} sections={sections} nav={nav}>
+        <LevelControl
+          level={level}
+          shown={visible.size}
+          total={walk.steps.length}
+          onChange={(n) => {
+            setLevel(n);
+            setExpanded(new Set());
+          }}
+        />
+      </MapBar>
       <main>
         <header>
           <h1>{doc.system.title}</h1>
           <div className="stats">
             <span>{`${walk.steps.length} steps`}</span>
             <span>{`${files.size} files on the path`}</span>
-            <span>{`${dataIdsOf(walk).length} data types`}</span>
+            <span>{`${dataCount} data types`}</span>
             <span>{`${d.filesAnalyzed} files analyzed`}</span>
             {walk.selection && <span>{`selection: ${walk.selection.ids.length} functions, ${walk.selection.data.length} data types`}</span>}
             <span>{`${d.roots.length > 1 ? `${d.roots.length} repos — ` : "root: "}${rootsText}`}</span>
           </div>
-          <LevelControl
-            level={level}
-            shown={visible.size}
-            total={walk.steps.length}
-            onChange={(n) => {
-              setLevel(n);
-              setExpanded(new Set());
-            }}
-          />
         </header>
         <Intro />
         <Diagrams view={view} />
