@@ -1,18 +1,12 @@
-# Publishes to npm, two ways:
-# - Run it by hand (Actions → Publish → Run workflow) on main with a bump: it sets the next version, publishes,
-#   then commits the version to main and pushes the vX.Y.Z tag.
-# - Push a tag (git tag v1.2.3 && git push origin v1.2.3): the tag is the version; it publishes, then commits
-#   that version to main.
+# Publishes to npm. Run it by hand (Actions → Publish → Run workflow) on main with a bump: it sets the next
+# version, publishes, then commits the version to main and pushes the vX.Y.Z tag as a record.
 # It uses npm trusted publishing (OIDC), so no token is stored: the package's settings on npmjs.com name this
 # repo and workflow. npm's own CLI publishes because trusted publishing needs it (npm 11.5.1 or later).
-# Tags pushed here use GITHUB_TOKEN, which doesn't start workflows, so a release never triggers a second one.
 # After publishing it deploys the hosted viewer from the same commit, so the viewer always matches the latest
 # release on npm. (pages.yml can deploy it by hand between releases.)
 name: Publish
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       bump:
@@ -36,8 +30,8 @@ jobs:
     outputs:
       sha: ${{ steps.source.outputs.sha }}
     steps:
-      - name: Only from main when run by hand
-        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
         run: echo "Run this workflow on main." && exit 1
       - uses: actions/checkout@v4
         with:
@@ -55,11 +49,7 @@ jobs:
         env:
           BUMP: ${{ inputs.bump }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            npm version "$BUMP" --no-git-tag-version
-          else
-            npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
-          fi
+          npm version "$BUMP" --no-git-tag-version
           version=$(jq -r .version package.json)
           if npm view "$(jq -r .name package.json)@$version" version >/dev/null 2>&1; then
             echo "$version is already on npm." && exit 1
@@ -79,19 +69,9 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            git commit -am "chore(release): v$VERSION"
-            git tag "v$VERSION"
-            git push origin HEAD:main "v$VERSION"
-          else
-            git checkout -- package.json
-            git checkout main
-            npm version "$VERSION" --no-git-tag-version --allow-same-version
-            if ! git diff --quiet package.json; then
-              git commit -am "chore(release): v$VERSION"
-              git push origin main
-            fi
-          fi
+          git commit -am "chore(release): v$VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD:main "v$VERSION"
 
   viewer:
     needs: publish
