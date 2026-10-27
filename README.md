@@ -236,4 +236,9 @@ bun run src/cli.ts . -i src -s docs/maps/orders.selection.txt \
 
 CI runs the typecheck and tests on every push. Pushing to `main` also deploys the hosted viewer to GitHub Pages.
 
-To publish to npm, bump `version` in `package.json`, commit, then push a matching tag: `git tag v0.2.0 && git push origin v0.2.0`. The `Publish` workflow checks that the tag matches the version, runs the tests and publishes with npm trusted publishing, so no npm token is stored in the repo. The package's settings on npmjs.com must list this repo's `publish.yml` as a trusted publisher (set once, after the first publish).
+To publish to npm, never edit the version by hand. Either:
+
+- run the **Publish** workflow from the Actions tab on `main` and pick `patch`, `minor` or `major` (or `gh workflow run publish.yml -f bump=minor`). It raises the version, runs the tests, publishes, then commits `chore(release): vX.Y.Z` to `main` and pushes the tag; or
+- push a tag, `git tag v0.3.0 && git push origin v0.3.0`. The tag is the version: it publishes, then commits that version to `main`.
+
+Publishing uses npm trusted publishing, so no npm token is stored in the repo. The package's settings on npmjs.com list this repo's `publish.yml` as its trusted publisher.
