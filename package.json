@@ -1,0 +1,26 @@
+{
+  "name": "code-map",
+  "version": "0.1.0",
+  "description": "Generate a code-map: a JSON sitemap of how code runs (for agents) and a viewer that draws it as a system diagram and walkthrough (for people).",
+  "type": "module",
+  "bin": {
+    "code-map": "src/cli.ts",
+    "code-map-mcp": "src/mcp.ts"
+  },
+  "scripts": {
+    "map": "bun run src/cli.ts",
+    "view": "bun run src/cli.ts view",
+    "mcp": "bun run src/mcp.ts",
+    "build:viewer": "bun run scripts/build-viewer.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "typescript": "^5.6.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.13"
+  }
+}

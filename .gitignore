@@ -1,0 +1,8 @@
+node_modules
+!test/multi/app/node_modules
+*.html
+code-map.json
+.playwright-mcp
+dist
+generated/
+!test/multi/lib/dist

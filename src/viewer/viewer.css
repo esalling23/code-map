@@ -1,0 +1,31 @@
+/* The viewer's own screens (home, recent files, the bar above a map) and the code colours. */
+:root{--hl-kw:#cf222e;--hl-str:#0a3069;--hl-num:#0550ae;--hl-fn:#8250df;--hl-type:#953800;--hl-com:#6e7781;--hl-attr:#116329}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--hl-kw:#ff7b72;--hl-str:#a5d6ff;--hl-num:#79c0ff;--hl-fn:#d2a8ff;--hl-type:#ffa657;--hl-com:#8b949e;--hl-attr:#7ee787}}
+:root[data-theme="dark"]{--hl-kw:#ff7b72;--hl-str:#a5d6ff;--hl-num:#79c0ff;--hl-fn:#d2a8ff;--hl-type:#ffa657;--hl-com:#8b949e;--hl-attr:#7ee787}
+.hljs-keyword,.hljs-literal,.hljs-built_in,.hljs-meta{color:var(--hl-kw)}
+.hljs-string,.hljs-regexp,.hljs-template-tag{color:var(--hl-str)}
+.hljs-number,.hljs-variable.constant_{color:var(--hl-num)}
+.hljs-title,.hljs-title.function_{color:var(--hl-fn)}
+.hljs-title.class_,.hljs-type{color:var(--hl-type)}
+.hljs-comment,.hljs-doctag{color:var(--hl-com);font-style:italic}
+.hljs-attr,.hljs-property,.hljs-params{color:var(--hl-attr)}
+.viewerbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:14px;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--line);font-size:13px}
+.viewerbar span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.open-other,.recent .clear{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;padding:3px 10px;cursor:pointer;font:inherit;font-size:13px}
+.open-other:hover,.recent .clear:hover{border-color:var(--accent)}
+.home{max-width:760px}
+.home h1{margin:24px 0 6px;font-size:26px}
+.drop{display:flex;flex-direction:column;align-items:center;gap:4px;margin:20px 0 8px;padding:40px 16px;border:2px dashed var(--line);border-radius:12px;background:var(--panel);cursor:pointer;text-align:center}
+.drop span{color:var(--muted);font-size:13.5px}
+.drop:hover,body.dropping .drop{border-color:var(--accent)}
+body.dropping{outline:3px solid var(--accent);outline-offset:-3px}
+.error{color:var(--warn);font-size:14px}
+.recenthead{display:flex;align-items:baseline;justify-content:space-between}
+.recent ul{list-style:none;padding:0;margin:0;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.recent li{display:flex;align-items:center;border-top:1px solid var(--line)}
+.recent li:first-child{border-top:0}
+.recent li a{flex:1;min-width:0;display:flex;flex-direction:column;padding:10px 14px;color:var(--ink)}
+.recent li a:hover{text-decoration:none;background:var(--chip)}
+.recent li a span{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recent .remove{border:0;background:none;color:var(--muted);font-size:18px;padding:8px 14px;cursor:pointer}
+.recent .remove:hover{color:var(--ink)}
