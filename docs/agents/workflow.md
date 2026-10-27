@@ -6,7 +6,7 @@ The tools do the analysis. **Your job is what they can't do well:** choosing wha
 
 The readers are **engineers new to this code**, and many read English as a second language. They know what an API, a database or a queue is. They don't know this codebase, its names or its history. Write short sentences with common words, and explain every project-specific name the first time it appears.
 
-Use absolute paths for every folder and file you pass to the tools. Keep working files (selection, descriptions, outputs) in one folder outside the repos being mapped, for example `~/Developer/code-maps/<short-slug>/`.
+Use absolute paths for every folder and file you pass to the tools. Keep working files (selection, descriptions, outputs) in one folder under the current working directory, for example `<cwd>/code-maps/<short-slug>/`, unless the person names another place.
 
 ## 1. Decide what to map
 
