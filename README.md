@@ -13,13 +13,13 @@ code-map runs on [Bun](https://bun.sh) (1.1 or later); it is TypeScript run dire
 
 ```sh
 # The MCP server, for Claude Code in every project
-claude mcp add --scope user code-map -- bunx --package @esalling23/code-map code-map-mcp
+claude mcp add --scope user code-map -- bunx --package @eronsalling23/code-map code-map-mcp
 
 # The CLI, without installing
-bunx @esalling23/code-map <repo> -e <entry> -o map.json
+bunx @eronsalling23/code-map <repo> -e <entry> -o map.json
 
 # Or install both commands (code-map, code-map-mcp)
-bun add -g @esalling23/code-map
+bun add -g @eronsalling23/code-map
 ```
 
 The viewer shows
@@ -183,7 +183,7 @@ One page (`src/viewer/`, a React app) draws any code-map document. Bun bundles i
 `code-map-mcp` speaks MCP over stdio. Add it to Claude Code with:
 
 ```sh
-claude mcp add --scope user code-map -- bunx --package @esalling23/code-map code-map-mcp
+claude mcp add --scope user code-map -- bunx --package @eronsalling23/code-map code-map-mcp
 # or, from a clone of this repo
 claude mcp add --scope user code-map -- bun run /path/to/code-map/src/mcp.ts
 ```

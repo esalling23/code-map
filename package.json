@@ -1,5 +1,5 @@
 {
-  "name": "@esalling23/code-map",
+  "name": "@eronsalling23/code-map",
   "version": "0.1.0",
   "description": "Generate a code-map: a JSON sitemap of how code runs (for agents) and a viewer that draws it as a system diagram and walkthrough (for people).",
   "keywords": [
