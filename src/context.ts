@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
+import { createModel, type Model } from "./model";
 import type { CodeMap, SystemArea, SystemContext, Walkthrough } from "./types";
 
 const DOC_FILES = ["ARCHITECTURE.md", "README.md"];
@@ -105,8 +106,8 @@ const humanize = (s: string) => s.replace(/[-_]+/g, " ").replace(/([a-z])([A-Z])
  * Gathers what the repos say about themselves — package descriptions, READMEs, architecture
  * docs and file header comments — and groups the steps of a walkthrough into areas of the system.
  */
-export function buildContext(map: CodeMap, walk: Walkthrough): SystemContext {
-  const rootOf = (file: string) => map.roots.find((r) => r.label && file.startsWith(`${r.label}/`)) ?? map.roots.find((r) => !r.label)!;
+export function buildContext(map: CodeMap, walk: Walkthrough, m: Model = createModel(map, walk)): SystemContext {
+  const rootOf = (file: string) => m.rootOf(file)!;
   const absOf = (file: string) => {
     const r = rootOf(file);
     return join(r.dir, r.label ? file.slice(r.label.length + 1) : file);
@@ -118,8 +119,9 @@ export function buildContext(map: CodeMap, walk: Walkthrough): SystemContext {
   };
 
   const repoDocs = new Map<string, DocLine[]>();
+  const rootsOnPath = new Set([...m.filesOnPath].map(rootOf));
   const repos = map.roots
-    .filter((r) => walk.steps.some((s) => rootOf(map.symbols[s.symbolId].file) === r))
+    .filter((r) => rootsOnPath.has(r))
     .map((r) => {
       const pkg = packageJson(r.dir);
       const readme = read(join(r.dir, "README.md"));
@@ -152,7 +154,7 @@ export function buildContext(map: CodeMap, walk: Walkthrough): SystemContext {
   const areas = new Map<string, SystemArea & { fallback?: { doc: string; docSource: string } }>();
   const areaOfStep: string[] = [];
   for (const step of walk.steps) {
-    const sym = map.symbols[step.symbolId];
+    const sym = m.symbolOf(step);
     const dir = areaDirOf(sym.file);
     const id = displayOf(dir);
     areaOfStep.push(id);

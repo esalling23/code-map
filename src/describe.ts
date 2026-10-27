@@ -1,4 +1,5 @@
 import { buildContext } from "./context";
+import { createModel, type Model } from "./model";
 import type { CodeMap, CodeSymbol, PathStep, SystemContext, Walkthrough } from "./types";
 
 const short = (s: CodeSymbol) => (s.kind === "module" ? s.file : s.name);
@@ -25,8 +26,9 @@ function list(items: string[]): string {
 }
 
 /** Plain-language description of one step, built only from what static analysis knows. */
-export function describeStep(map: CodeMap, walk: Walkthrough, step: PathStep): string {
-  const sym = map.symbols[step.symbolId];
+export function describeStep(m: Model, step: PathStep): string {
+  const { map } = m;
+  const sym = m.symbolOf(step);
   const parts: string[] = [];
 
   if (sym.kind === "module") {
@@ -44,7 +46,7 @@ export function describeStep(map: CodeMap, walk: Walkthrough, step: PathStep): s
   } else if (step.parent === undefined) {
     parts.push(step.index === 0 ? "This is where the path starts." : "No earlier step leads here, so this starts a separate part of the path.");
   } else {
-    const parent = map.symbols[walk.steps[step.parent].symbolId];
+    const parent = m.symbolOf(m.parentOf(step)!);
     const viaRepo = parent.repo !== sym.repo && sym.repo ? ` from the ${code(parent.repo)} repo` : "";
     parts.push(`Called by ${code(short(parent))} (step ${step.parent + 1})${viaRepo} on line ${step.callLine}${via}.`);
   }
@@ -81,11 +83,12 @@ export function describeStep(map: CodeMap, walk: Walkthrough, step: PathStep): s
   return parts.join(" ");
 }
 
-export function describeOverview(map: CodeMap, walk: Walkthrough): string {
+export function describeOverview(m: Model): string {
+  const { map, walk } = m;
   const entry = map.symbols[walk.entry];
-  const files = [...new Set(walk.steps.map((s) => map.symbols[s.symbolId].file))];
-  const data = [...new Set([...walk.steps.flatMap((s) => s.dataUsed.map((d) => d.id)), ...(walk.selection?.data ?? [])].map((id) => map.symbols[id].name))];
-  const repos = [...new Set(walk.steps.map((s) => map.symbols[s.symbolId].repo))].filter(Boolean);
+  const files = [...m.filesOnPath];
+  const data = [...new Set(m.dataIds.map((id) => map.symbols[id].name))];
+  const repos = [...new Set(walk.steps.map((s) => m.symbolOf(s).repo))].filter(Boolean);
   const where = entry.kind === "module" ? `the top-level code of ${code(entry.file)}` : `${code(entry.name)} in ${code(entry.file)}`;
   const inRepos = repos.length > 1 ? ` across ${repos.length} repos (${list(repos.map(code))})` : "";
   let text = walk.selection
@@ -121,11 +124,12 @@ export function describeRole(ctx: SystemContext): string {
 }
 
 export function describeHeuristic(map: CodeMap, walk: Walkthrough): Walkthrough {
-  const ctx = walk.context ?? buildContext(map, walk);
+  const m = createModel(map, walk);
+  const ctx = walk.context ?? buildContext(map, walk, m);
   return {
     ...walk,
-    overview: describeOverview(map, walk),
-    steps: walk.steps.map((s) => ({ ...s, description: describeStep(map, walk, s) })),
+    overview: describeOverview(m),
+    steps: walk.steps.map((s) => ({ ...s, description: describeStep(m, s) })),
     context: { ...ctx, summary: describeSummary(map, walk, ctx), role: describeRole(ctx) },
   };
 }
