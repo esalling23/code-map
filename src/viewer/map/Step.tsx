@@ -3,7 +3,7 @@ import { Fragment, useMemo, useState, type CSSProperties } from "react";
 import type { PathStep } from "../../types";
 import { allLines, excerpt } from "../text";
 import { CodeBox } from "./CodeBox";
-import { AreaLink, StepLink, useMap } from "./context";
+import { AreaLink, StepLink, useCurrentStep, useMap } from "./context";
 import { Inline } from "./Inline";
 import { CallSnippet, DataSnippet } from "./Snippets";
 import { Tabs, type TabDef } from "./Tabs";
@@ -198,7 +198,8 @@ function StepTabs({ step, main, sub, onMain, onSub }: { step: PathStep; main: st
 }
 
 export function Step({ step }: { step: PathStep }) {
-  const { current, target } = useMap();
+  const { target } = useMap();
+  const reading = useCurrentStep((s) => s === step.index);
   const [main, setMain] = useState("code");
   const [sub, setSub] = useState<Record<string, string>>({});
   const onSub = (tab: string, key: string) => setSub((s) => ({ ...s, [tab]: key }));
@@ -208,7 +209,7 @@ export function Step({ step }: { step: PathStep }) {
     onSub(tab, key);
   };
   const id = `step-${step.index + 1}`;
-  const cls = ["step", current === step.index && "current", target === id && "targeted"].filter(Boolean).join(" ");
+  const cls = ["step", reading && "current", target === id && "targeted"].filter(Boolean).join(" ");
   return (
     <section className={cls} id={id} data-node={`s${step.index}`} style={{ "--depth": Math.min(step.depth, 8) } as CSSProperties}>
       <StepExplain step={step} onOpen={open} />

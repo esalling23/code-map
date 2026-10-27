@@ -5,7 +5,7 @@ import { pathView, type CodeMapDocument } from "../../pagedata";
 import { Diagrams } from "../diagram/Diagrams";
 import { LevelControl, useLevel } from "../levels/LevelControl";
 import { hiddenGroups, stepLevels, visibleSteps } from "../levels/levels";
-import { MapProvider, type MapState } from "./context";
+import { currentStepStore, MapProvider, type MapState } from "./context";
 import { Intro } from "./Intro";
 import { MapBar, type MapNav, type MapSection } from "./MapBar";
 import { DataSection, Walkthrough } from "./Walkthrough";
@@ -15,7 +15,7 @@ export function MapPage({ doc, nav }: { doc: CodeMapDocument; nav?: MapNav }) {
   const walk = d.walkthrough;
   const [level, setLevel] = useLevel();
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
-  const [current, setCurrent] = useState(-1);
+  const [current] = useState(() => currentStepStore());
   const [target, setTarget] = useState("");
   const [scrollTo, setScrollTo] = useState("");
 
@@ -46,17 +46,10 @@ export function MapPage({ doc, nav }: { doc: CodeMapDocument; nav?: MapNav }) {
     setScrollTo("");
   }, [scrollTo, visible]);
 
-  const state: MapState = {
-    doc,
-    visible,
-    hidden,
-    expand,
-    goToStep,
-    goToArea: (n) => setScrollTo(`area-${n}`),
-    current,
-    setCurrent,
-    target,
-  };
+  const state = useMemo<MapState>(
+    () => ({ doc, visible, hidden, expand, goToStep, goToArea: (n) => setScrollTo(`area-${n}`), current, target }),
+    [doc, visible, hidden, expand, goToStep, current, target],
+  );
 
   const dataCount = dataIdsOf(walk).length;
   const sections: MapSection[] = [

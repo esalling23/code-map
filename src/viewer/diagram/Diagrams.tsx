@@ -1,7 +1,7 @@
 // The "System diagram" section: the call path (full and compact) and the files diagram, as tabs.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Diagram as DiagramData, PathView } from "../../pagedata";
-import { useMap } from "../map/context";
+import { useCurrentStep, useMap } from "../map/context";
 import { DiagramFrame, useDiagram } from "./Diagram";
 import { follow } from "./glide";
 import { NavButtons, StepPanel, useNavigator, type Navigator } from "./StepNavigator";
@@ -10,7 +10,8 @@ const PATH_CLASSES = ["on-path", "nav-edge", "nav-cur", "nav-from"];
 
 function PathDiagram({ name, data, active, nav }: { name: string; data: DiagramData; active: boolean; nav: Navigator }) {
   const d = useDiagram(data, active);
-  const { goToStep, expand, current } = useMap();
+  const { goToStep, expand } = useMap();
+  const current = useCurrentStep();
   const panel = useRef<HTMLElement>(null);
   const { graph } = d;
   const route = nav.route;

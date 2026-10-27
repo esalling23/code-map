@@ -1,5 +1,5 @@
 // What every part of a map page shares: the document, which steps are shown, and how to move around.
-import { createContext, useContext, type MouseEvent, type ReactNode } from "react";
+import { createContext, useContext, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 import type { CodeMapDocument } from "../../pagedata";
 
 export interface MapState {
@@ -10,11 +10,40 @@ export interface MapState {
   expand(step: number): void;
   goToStep(step: number): void;
   goToArea(n: number): void;
-  /** The step being read in the walkthrough, or -1. */
-  current: number;
-  setCurrent(step: number): void;
+  /** The step being read in the walkthrough. A store, not a value, so scrolling re-renders only what shows it. */
+  current: CurrentStep;
   /** `step-N` or `area-N` just jumped to. */
   target: string;
+}
+
+/** The step being read in the walkthrough, or -1. */
+export interface CurrentStep {
+  get(): number;
+  set(step: number): void;
+  subscribe(listener: () => void): () => void;
+}
+
+export function currentStepStore(): CurrentStep {
+  let step = -1;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => step,
+    set(next) {
+      if (next === step) return;
+      step = next;
+      for (const l of listeners) l();
+    },
+    subscribe(l) {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+  };
+}
+
+/** The step being read, re-rendering only when `pick` of it changes. */
+export function useCurrentStep<T = number>(pick: (step: number) => T = (s) => s as T): T {
+  const { current } = useMap();
+  return useSyncExternalStore(current.subscribe, () => pick(current.get()), () => pick(-1));
 }
 
 const MapContext = createContext<MapState | null>(null);

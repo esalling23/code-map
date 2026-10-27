@@ -8,7 +8,7 @@ import { Step } from "./Step";
 import { Tabs } from "./Tabs";
 
 export function Walkthrough() {
-  const { doc, visible, setCurrent } = useMap();
+  const { doc, visible, current } = useMap();
   const steps = doc.render.walkthrough.steps.filter((s) => visible.has(s.index));
   const box = useRef<HTMLDivElement>(null);
   const shownKey = steps.map((s) => s.index).join(",");
@@ -17,13 +17,13 @@ export function Walkthrough() {
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        for (const e of entries) if (e.isIntersecting) setCurrent(Number((e.target as HTMLElement).dataset.node!.slice(1)));
+        for (const e of entries) if (e.isIntersecting) current.set(Number((e.target as HTMLElement).dataset.node!.slice(1)));
       },
       { rootMargin: "-30% 0px -60% 0px" },
     );
     box.current?.querySelectorAll(".step").forEach((s) => observer.observe(s));
     return () => observer.disconnect();
-  }, [shownKey, setCurrent]);
+  }, [shownKey, current]);
 
   return (
     <>
