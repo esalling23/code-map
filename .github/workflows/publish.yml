@@ -6,6 +6,8 @@
 # It uses npm trusted publishing (OIDC), so no token is stored: the package's settings on npmjs.com name this
 # repo and workflow. npm's own CLI publishes because trusted publishing needs it (npm 11.5.1 or later).
 # Tags pushed here use GITHUB_TOKEN, which doesn't start workflows, so a release never triggers a second one.
+# After publishing it deploys the hosted viewer from the same commit, so the viewer always matches the latest
+# release on npm. (pages.yml can deploy it by hand between releases.)
 name: Publish
 
 on:
@@ -22,6 +24,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  pages: write
 
 concurrency:
   group: publish
@@ -30,6 +33,8 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
     steps:
       - name: Only from main when run by hand
         if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
@@ -61,6 +66,10 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Remember the released source
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run test
@@ -83,3 +92,31 @@ jobs:
               git push origin main
             fi
           fi
+
+  viewer:
+    needs: publish
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.publish.outputs.sha }}
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run build:viewer
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy-viewer:
+    needs: viewer
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

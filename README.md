@@ -245,7 +245,7 @@ bun run src/cli.ts . -i src -s docs/maps/orders.selection.txt \
 
 ## Releasing
 
-CI runs the typecheck and tests on every push. Pushing to `main` also deploys the hosted viewer to GitHub Pages.
+CI runs the typecheck and tests on every push. Each release also deploys the hosted viewer to GitHub Pages from the released commit, so the viewer always matches the latest version on npm. To ship a viewer fix between releases, run the **Pages** workflow by hand on `main`.
 
 To publish to npm, never edit the version by hand. Either:
 

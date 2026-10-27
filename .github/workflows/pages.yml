@@ -1,9 +1,9 @@
 # The hosted viewer: one static page that opens any code-map JSON (upload, recent files, ?src=<url>).
+# Each release deploys it (publish.yml), so it matches the latest version on npm. Run this by hand on main
+# only to ship a viewer fix between releases; it must still open every map the released CLI writes.
 name: Pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
