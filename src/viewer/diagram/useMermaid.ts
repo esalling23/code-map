@@ -16,7 +16,7 @@ let ids = 0;
 function mermaid(): Promise<Mermaid> {
   loading ??= import(/* @vite-ignore */ MERMAID_URL).then(({ default: m }: { default: Mermaid }) => {
     const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-    m.initialize({ startOnLoad: false, theme: dark ? "dark" : "default", flowchart: { htmlLabels: true, curve: "basis" }, maxTextSize: 200000 });
+    m.initialize({ startOnLoad: false, theme: dark ? "dark" : "default", flowchart: { htmlLabels: true, curve: "basis" }, maxTextSize: 200000, maxEdges: 10000 });
     return m;
   });
   // A failed load (offline, CDN down) is retried by the next diagram instead of failing every one until reload.

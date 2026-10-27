@@ -50,7 +50,7 @@ h2{margin:36px 0 8px;font-size:20px}
 .toolbar button:hover{border-color:var(--accent)}
 .zoomlevel{min-width:44px;text-align:center;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .hint{margin-left:auto;font-size:12px;color:var(--muted)}
-.stage{position:relative;height:70vh;overflow:hidden;cursor:grab;touch-action:none;outline:none}
+.stage{position:relative;height:70vh;overflow:hidden;cursor:grab;touch-action:none;outline:none;-webkit-user-select:none;user-select:none}
 .diagram:fullscreen .stage{flex:1;height:auto}
 .stage.dragging{cursor:grabbing}
 .stage pre{position:absolute;left:0;top:0;margin:0;transform-origin:0 0}
