@@ -55,3 +55,21 @@ test("errors come back as tool results", async () => {
   const r = await call("trace", { dirs: [areas], entry: "nope" });
   expect(r.isError).toBe(true);
 });
+
+test("a wrong argument name is rejected with the names the tool takes", async () => {
+  const guide = await call("guide", { topic: "workflow" });
+  expect(guide.isError).toBe(true);
+  expect(guide.text).toContain('Unknown argument "topic". This tool takes: name.');
+  const entries = await call("list_entries", { repo: areas });
+  expect(entries.isError).toBe(true);
+  expect(entries.text).toContain('Unknown argument "repo". This tool takes: dirs, include, tests, limit.');
+  // Removed options fail too, rather than being dropped.
+  expect((await call("trace", { dirs: [areas], maxSteps: 5 })).text).toContain('Unknown argument "maxSteps"');
+});
+
+test("trace creates the template's folder", async () => {
+  const templatePath = join(dir, "new", "folder", "descriptions.json");
+  const traced = await call("trace", { dirs: [areas], entry: "Orders.place", templatePath });
+  expect(traced.isError).toBe(false);
+  expect(JSON.parse(readFileSync(templatePath, "utf8")).steps).toHaveLength(3);
+});

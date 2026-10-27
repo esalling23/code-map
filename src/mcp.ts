@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // code-map as an MCP server (stdio): the same analyze → describe → build loop as the CLI, for agents.
 // Every tool is stateless: it takes the folders and options each time and reads or writes files by path.
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -17,9 +17,11 @@ const guide = (name: (typeof GUIDES)[number]) => readFileSync(join(import.meta.d
 
 const INSTRUCTIONS = `code-map maps how code runs: the functions on one path through one or more TypeScript/JavaScript repos, the data they use, and a plain-language walkthrough. The result is one JSON file. Its \`system\` section is a sitemap agents read to understand a system without its source; the viewer draws the whole file for people.
 
-To understand a system that already has a map, call read_map on its JSON.
+Use it whenever someone wants to understand, explain, onboard onto, document or visualize how code or a system works: a repo, a folder, a few files, one flow ("what happens when a game is promoted") or a named system spread over several repos. That includes "map this", "walk me through how X works", "explain this codebase to a new dev", "diagram the flow of X", or a request for an onboarding or architecture page, even when nobody says "code map".
 
-To make a map: (1) decide the repos, sub-paths and an entry or selection (list_entries, list_symbols); (2) trace with a templatePath: the map covers everything reachable in that scope, so to focus it narrow include, select or entry, never drop steps; (3) read the code for every step; (4) write the descriptions into the template in short, plain English for engineers new to this code, explaining every project name; (5) check_descriptions, then build. Call guide("workflow") before your first map, and guide("writing") before writing descriptions. Pass absolute paths.`;
+To understand a system that already has a map, call read_map with the \`path\` of its JSON.
+
+To make a map: (1) decide the repos (\`dirs\`), sub-paths (\`include\`) and an \`entry\` or \`select\` (list_entries, list_symbols); (2) call trace with a \`templatePath\`: the map covers everything reachable in that scope, so to focus it narrow \`include\`, \`select\` or \`entry\`, never drop steps; (3) read the code for every step; (4) write the descriptions into the template in short, plain English for engineers new to this code, explaining every project name; (5) check_descriptions, then build. Call guide with \`name: "workflow"\` before your first map, and \`name: "writing"\` before writing descriptions. Every tool lists its arguments in its input schema; use those names. Pass absolute paths.`;
 
 const source = {
   dirs: z.array(z.string()).min(1).describe("Absolute paths of the repo folders; several are analyzed as one system"),
@@ -33,6 +35,13 @@ const walkArgs = {
 };
 
 type WalkInput = { dirs: string[]; include?: string[]; tests?: boolean; entry?: string; select?: string[]; maxHops?: number };
+
+/** A tool's arguments. An unknown name is rejected with the names the tool takes, so a wrong guess fixes itself on the next call. */
+const args = <S extends z.ZodRawShape>(shape: S) =>
+  z.strictObject(shape, {
+    error: (iss) =>
+      iss.code === "unrecognized_keys" ? `Unknown argument ${iss.keys.map((k) => `"${k}"`).join(", ")}. This tool takes: ${Object.keys(shape).join(", ")}.` : undefined,
+  });
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 const json = (v: unknown) => text(JSON.stringify(v, null, 2));
@@ -73,7 +82,7 @@ server.registerTool(
   "guide",
   {
     description: "How to make a code map (workflow), how to write its descriptions (writing), and how to find the code for a system named in words (finding-the-system).",
-    inputSchema: { name: z.enum(GUIDES) },
+    inputSchema: args({ name: z.enum(GUIDES).describe("Which guide: workflow, writing or finding-the-system") }),
   },
   safe(({ name }) => text(guide(name))),
 );
@@ -82,7 +91,7 @@ server.registerTool(
   "list_entries",
   {
     description: "Likely entry points: functions nothing else calls, ranked by how much code they reach.",
-    inputSchema: { ...source, limit: z.number().int().positive().optional().describe("How many (default 20)") },
+    inputSchema: args({ ...source, limit: z.number().int().positive().optional().describe("How many (default 20)") }),
   },
   safe((a) => json(entryCandidates(loadMap(a), a.limit ?? 20))),
 );
@@ -91,7 +100,7 @@ server.registerTool(
   "list_symbols",
   {
     description: "What specs or globs match, with caller and callee counts. Check a selection before tracing it.",
-    inputSchema: { ...source, specs: z.array(z.string()).min(1).describe('Specs like "OrderService.*", "src/api/*.ts#handle*", "file#name"') },
+    inputSchema: args({ ...source, specs: z.array(z.string()).min(1).describe('Specs like "OrderService.*", "src/api/*.ts#handle*", "file#name"') }),
   },
   safe((a) => json(listSymbols(loadMap(a), readSelectionSpecs(a.specs)))),
 );
@@ -101,12 +110,12 @@ server.registerTool(
   {
     description:
       "Trace the path and produce the fill-in template: every step and area with the facts needed to describe it, a generated draft, and an empty description. With templatePath the template is written there and only a summary comes back; otherwise it comes back inline. The walk follows every call reachable in the scope (dirs, include, tests, entry, select); the summary gives the step count and the steps with the most steps beneath them. To focus the map, narrow the scope; never drop steps.",
-    inputSchema: {
+    inputSchema: args({
       ...source,
       ...walkArgs,
-      templatePath: z.string().optional().describe("Where to write the template JSON"),
+      templatePath: z.string().optional().describe("Where to write the template JSON; its folder is created if needed"),
       descriptionsPath: z.string().optional().describe("Start from an existing descriptions file: its written text is kept in the template's drafts"),
-    },
+    }),
   },
   safe((a) => {
     let { map, walk: w, notes } = walk(a);
@@ -132,6 +141,7 @@ server.registerTool(
         "The map covers everything reachable in this scope. If it covers code you did not mean to map, narrow include, select or entry and trace again; never drop steps. People hide small helpers with the viewer's level filter.",
     };
     if (!a.templatePath) return json({ ...summary, template });
+    mkdirSync(dirname(a.templatePath), { recursive: true });
     writeFileSync(a.templatePath, JSON.stringify(template, null, 2));
     return json({ ...summary, templatePath: a.templatePath, stepNames: template.steps.map((s) => `${s.step}. ${s.name}`) });
   }),
@@ -141,7 +151,7 @@ server.registerTool(
   "check_descriptions",
   {
     description: "Check a filled-in descriptions file for plain English: empty fields, long sentences, jargon, idioms, abbreviations never spelled out, and text copied from the docs or draft. Advisory.",
-    inputSchema: { path: z.string().describe("The descriptions JSON (the template, filled in)") },
+    inputSchema: args({ path: z.string().describe("The descriptions JSON (the template, filled in)") }),
   },
   safe(({ path }) => text(formatProblems(checkDescriptions(JSON.parse(readFileSync(path, "utf8")))))),
 );
@@ -151,13 +161,13 @@ server.registerTool(
   {
     description:
       "Build the code map and write it: .json paths get the code-map document (agents and the viewer read it), .html paths get one standalone page. Returns the warnings (fix each: it means text is missing) and the map's outline.",
-    inputSchema: {
+    inputSchema: args({
       ...source,
       ...walkArgs,
       out: z.array(z.string()).min(1).describe("Output paths, .json and/or .html"),
       descriptionsPath: z.string().optional().describe("The filled-in descriptions file"),
       title: z.string().optional().describe("Page title, when the descriptions file has none"),
-    },
+    }),
   },
   safe(async (a) => {
     let { map, walk: w, notes } = walk(a);
@@ -180,10 +190,10 @@ server.registerTool(
   {
     description:
       "Read an existing code map's system section: what the code does, where it sits, its areas, every step (file, lines, description, calls, data, parent step and how many steps sit beneath it) and the links between services. Use it to understand a mapped system without reading its source.",
-    inputSchema: {
+    inputSchema: args({
       path: z.string().describe("A code-map JSON file"),
       steps: z.boolean().optional().describe("Include every step (default true); false returns the summary, areas and links only"),
-    },
+    }),
   },
   safe(({ path, steps }) => {
     const raw = JSON.parse(readFileSync(path, "utf8"));
